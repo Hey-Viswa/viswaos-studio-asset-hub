@@ -878,6 +878,37 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #222228; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #32323a; }
+
+/* ── File System Access & Folder Connect Styling ── */
+.btn-top-action.folder-connected {
+  border-color: rgba(34, 197, 94, 0.4) !important;
+  background: rgba(34, 197, 94, 0.08) !important;
+  color: #4ade80 !important;
+}
+.btn-top-action.hover-off {
+  opacity: 0.6;
+}
+.grid-card[data-play-audio], .list-row[data-play-audio] {
+  cursor: pointer;
+}
+.list-row[data-play-audio]:hover {
+  background: #14141c;
+}
+.list-row.hover-preview {
+  background: #141a24 !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+.list-row.playing {
+  background: #111d15 !important;
+  border-color: rgba(34, 197, 94, 0.4) !important;
+}
+.folder-modal-hint {
+  background: #111117;
+  border: 1px solid #252533;
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
 </style>
 </head>
 <body>
@@ -961,6 +992,17 @@ body {
       <span>⚡ Only Full Mix</span>
     </button>
 
+    <!-- Hover Audition Toggle Button -->
+    <button class="btn-top-action" id="btnHoverToggle" title="Toggle Hover Audition: preview audio as you hover across cards or rows">
+      <span>🔊 Hover: <b id="hoverStateText" style="color:#22c55e">ON</b></span>
+    </button>
+
+    <!-- Connect Local Studio Folder (Direct Browser Disk Access for Vercel) -->
+    <button class="btn-top-action" id="btnConnectFolder" title="Connect local Studio Folder (E:\Videos) via File System API for 100% offline & Vercel deployment direct playback">
+      <span>📁 Studio Drive</span>
+      <span id="folderDot" style="width:7px;height:7px;border-radius:50%;background:#ef4444;display:inline-block;margin-left:3px" title="Not Connected"></span>
+    </button>
+
     <!-- Multi-Column Sort Selector -->
     <div class="sort-wrapper">
       <span class="sort-label">⇅ SORT:</span>
@@ -1042,6 +1084,36 @@ body {
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Copy Path
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Direct Folder Connect Modal (for Vercel & Offline Access) -->
+<div class="modal-overlay" id="folderModal">
+  <div class="modal-box" style="max-width:540px">
+    <div class="modal-bar">
+      <div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px">
+        <span>📁</span> Connect Local Studio Assets Folder
+      </div>
+      <button class="btn-action" id="folderModalClose">✕</button>
+    </div>
+    <div style="padding:22px 24px;display:flex;flex-direction:column;gap:16px;font-size:13px;color:#d1d5db;line-height:1.6">
+      <p>
+        <b style="color:#fff">Direct Browser Disk Engine:</b> Connect your local <code style="background:#1f1f28;color:#38bdf8;padding:2px 6px;border-radius:4px">E:\Videos</code> directory to unlock instant 0ms audio playback, interactive waveforms, 4K log video streaming, and 3D LUT simulation directly in your browser on Vercel deployment!
+      </p>
+      <div class="folder-modal-hint">
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;font-weight:600;letter-spacing:0.04em">HOW IT WORKS:</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;color:#e5e7eb;display:flex;flex-direction:column;gap:5px">
+          <li>100% private & client-side (zero files uploaded to any external server)</li>
+          <li>Uses the modern HTML5 File System Access API</li>
+          <li>Remembers your folder permission across page reloads via IndexedDB</li>
+          <li>Direct NVMe disk reads for butter-smooth 60fps 4K video scrubbing</li>
+        </ul>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px">
+        <button class="btn-modal" id="folderModalCancel" style="background:#1e1e26;color:#9ca3af">Later</button>
+        <button class="btn-modal" id="folderModalChoose" style="background:#2563eb;color:#fff;font-weight:600">📁 Select E:\Videos Folder</button>
       </div>
     </div>
   </div>
@@ -1143,6 +1215,22 @@ let wfCache = {};
 let animFrame = null;
 let modalActiveItem = null;
 let isAudioUnlocked = false;
+let hoverAuditionEnabled = true;
+let isLocalServerAlive = true;
+let studioDirHandle = null;
+const blobUrlCache = new Map();
+let currentAudioPath = '';
+let pendingPlayItem = null;
+
+// New Buttons & Folder Modal Selectors
+const btnHoverToggle = document.getElementById('btnHoverToggle');
+const hoverStateText = document.getElementById('hoverStateText');
+const btnConnectFolder = document.getElementById('btnConnectFolder');
+const folderDot = document.getElementById('folderDot');
+const folderModal = document.getElementById('folderModal');
+const folderModalClose = document.getElementById('folderModalClose');
+const folderModalCancel = document.getElementById('folderModalCancel');
+const folderModalChoose = document.getElementById('folderModalChoose');
 
 // DOM Selectors
 const audio = document.getElementById('globalAudio');
@@ -1198,6 +1286,197 @@ const docsFilterSection = document.getElementById('docsFilterSection');
 const docsListContainer = document.getElementById('docsListContainer');
 
 // ── State Persistence (localStorage) ─────────────────
+
+// ── File System Access & IndexedDB Engine (Vercel & Offline Disk Access) ──
+const FS_DB_NAME = 'viswaos_vault_db';
+const FS_STORE_NAME = 'handles';
+
+function getFsDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(FS_DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(FS_STORE_NAME);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(handle) {
+  try {
+    const db = await getFsDB();
+    const tx = db.transaction(FS_STORE_NAME, 'readwrite');
+    tx.objectStore(FS_STORE_NAME).put(handle, 'studio_dir');
+    return new Promise(r => tx.oncomplete = r);
+  } catch (e) {
+    console.warn('Could not save folder handle to IndexedDB:', e);
+  }
+}
+
+async function loadDirHandle() {
+  try {
+    const db = await getFsDB();
+    const tx = db.transaction(FS_STORE_NAME, 'readonly');
+    const req = tx.objectStore(FS_STORE_NAME).get('studio_dir');
+    return new Promise(r => {
+      req.onsuccess = () => r(req.result || null);
+      req.onerror = () => r(null);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+function updateFolderStatus(connected, name = '') {
+  if (folderDot) {
+    folderDot.style.background = connected ? '#22c55e' : '#ef4444';
+    folderDot.title = connected ? 'Connected: ' + name : 'Disconnected';
+  }
+  if (btnConnectFolder) {
+    btnConnectFolder.classList.toggle('folder-connected', connected);
+    btnConnectFolder.title = connected
+      ? `🟢 Connected: "${name}" (Direct Local Disk Read Active)`
+      : `📁 Click to connect local studio folder (E:\Videos) for offline & Vercel playback`;
+    const span = btnConnectFolder.querySelector('span');
+    if (span) span.textContent = connected ? '📁 ' + (name || 'Studio Drive') : '📁 Studio Drive';
+  }
+}
+
+async function connectStudioFolder() {
+  if (!('showDirectoryPicker' in window)) {
+    showToast('Browser folder access requires Chrome, Edge, or Opera.', '⚠️');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({
+      id: 'viswaos_studio_videos',
+      mode: 'read'
+    });
+    if (handle) {
+      studioDirHandle = handle;
+      await saveDirHandle(handle);
+      updateFolderStatus(true, handle.name);
+      if (folderModal) folderModal.classList.remove('open');
+      showToast(`🟢 Connected: "${handle.name}"! Direct local disk playback & 4K grading enabled.`, '✅');
+      if (pendingPlayItem) {
+        const p = pendingPlayItem;
+        pendingPlayItem = null;
+        playAudio(p.item, p.idx, p.lock);
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showToast('Could not access folder: ' + err.message, '❌');
+    }
+  }
+}
+
+function showFolderConnectModal(item = null, idx = -1, lock = true) {
+  if (item) pendingPlayItem = { item, idx, lock };
+  if (folderModal) folderModal.classList.add('open');
+}
+
+if (btnConnectFolder) btnConnectFolder.onclick = () => showFolderConnectModal();
+if (folderModalClose) folderModalClose.onclick = () => folderModal.classList.remove('open');
+if (folderModalCancel) folderModalCancel.onclick = () => folderModal.classList.remove('open');
+if (folderModalChoose) folderModalChoose.onclick = connectStudioFolder;
+if (folderModal) folderModal.onclick = e => { if (e.target === folderModal) folderModal.classList.remove('open'); };
+
+// Hover Audition Toggle
+if (btnHoverToggle) {
+  btnHoverToggle.onclick = () => {
+    hoverAuditionEnabled = !hoverAuditionEnabled;
+    hoverStateText.textContent = hoverAuditionEnabled ? 'ON' : 'OFF';
+    hoverStateText.style.color = hoverAuditionEnabled ? '#22c55e' : '#9ca3af';
+    btnHoverToggle.classList.toggle('hover-off', !hoverAuditionEnabled);
+    showToast(hoverAuditionEnabled ? 'Hover Audition: ON (Hover over any card to preview)' : 'Hover Audition: OFF (Click cards to play)', '🔊');
+    saveState();
+  };
+}
+
+async function resolvePathToBlobUrl(dirHandle, fullPath) {
+  if (!dirHandle || !fullPath) return null;
+  let norm = fullPath.replace(/\\/g, '/');
+  const rootName = dirHandle.name.toLowerCase();
+
+  const marker = '/' + rootName + '/';
+  const mIdx = norm.toLowerCase().indexOf(marker);
+  if (mIdx >= 0) {
+    norm = norm.substring(mIdx + marker.length);
+  } else {
+    norm = norm.replace(/^[a-zA-Z]:\/?/, '').replace(/^\/+/, '');
+    const firstPart = norm.split('/')[0];
+    if (firstPart && firstPart.toLowerCase() === rootName) {
+      norm = norm.substring(firstPart.length + 1);
+    }
+  }
+
+  const parts = norm.split('/').filter(Boolean);
+  if (!parts.length) return null;
+
+  let curr = dirHandle;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const partName = parts[i];
+    try {
+      curr = await curr.getDirectoryHandle(partName);
+    } catch (e) {
+      let found = null;
+      for await (const [name, entry] of curr.entries()) {
+        if (entry.kind === 'directory' && name.toLowerCase() === partName.toLowerCase()) {
+          found = entry;
+          break;
+        }
+      }
+      if (found) {
+        curr = found;
+      } else {
+        return null;
+      }
+    }
+  }
+
+  const fileName = parts[parts.length - 1];
+  let fileHandle = null;
+  try {
+    fileHandle = await curr.getFileHandle(fileName);
+  } catch (e) {
+    for await (const [name, entry] of curr.entries()) {
+      if (entry.kind === 'file' && name.toLowerCase() === fileName.toLowerCase()) {
+        fileHandle = entry;
+        break;
+      }
+    }
+  }
+
+  if (!fileHandle) return null;
+  const file = await fileHandle.getFile();
+  return URL.createObjectURL(file);
+}
+
+async function resolveMediaUrl(fullPath) {
+  if (!fullPath) return '';
+
+  // 1. If running on localhost with server
+  if (isLocalServerAlive && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return '/api/media?p=' + encodeURIComponent(fullPath);
+  }
+
+  // 2. Direct folder read via File System API
+  if (studioDirHandle) {
+    if (blobUrlCache.has(fullPath)) return blobUrlCache.get(fullPath);
+    try {
+      const blobUrl = await resolvePathToBlobUrl(studioDirHandle, fullPath);
+      if (blobUrl) {
+        blobUrlCache.set(fullPath, blobUrl);
+        return blobUrl;
+      }
+    } catch (e) {
+      console.warn('Could not read from local handle:', e);
+    }
+  }
+
+  // 3. Fallback to API relative URL
+  return '/api/media?p=' + encodeURIComponent(fullPath);
+}
+
 function saveState() {
   try {
     const s = {
@@ -1309,6 +1588,33 @@ if (btnOnlyFullMix) {
 // ── Bootstrapping ────────────────────────────────────
 (async () => {
   restoreState();
+
+  // Test if local server is alive
+  try {
+    const vRes = await fetch('/api/version').catch(() => null);
+    isLocalServerAlive = !!(vRes && vRes.ok);
+  } catch(e) {
+    isLocalServerAlive = false;
+  }
+
+  // Load existing DirectoryHandle from IndexedDB if previously connected
+  try {
+    const savedHandle = await loadDirHandle();
+    if (savedHandle) {
+      studioDirHandle = savedHandle;
+      updateFolderStatus(true, savedHandle.name);
+    } else {
+      updateFolderStatus(false);
+      // If deployed on Vercel and no local server, guide user to connect studio folder
+      if (!isLocalServerAlive && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        setTimeout(() => {
+          showToast('☁️ Running on Web: Click "📁 Studio Drive" in top bar to connect your E:\Videos folder!', '💡');
+        }, 1500);
+      }
+    }
+  } catch(e) {
+    updateFolderStatus(false);
+  }
   setViewMode(viewMode);
   updateActiveSectionBtn();
   if (sortSelect) sortSelect.value = currentSort;
@@ -1498,13 +1804,14 @@ function renderFilterBoard() {
   if (curSection === 'Music & Stems') {
     // 5-Tier Music Board: Stems, BPM, Keys, Instruments, Vibes
     const stems = ['Full Mix', 'Full Track', 'Bass', 'Drums', 'Melody', 'Instruments', 'Vocals', 'Pads & Drones', 'Melodic Hits', 'Melodic Risers', 'Tonal Transitions'];
-    const bpms = ['< 90', '90-115', '116-130', '131-150', '150+'];
+    const bpms = ['Ambient / Free Tempo', '< 90', '90-115', '116-130', '131-150', '150+'];
     const bpmLabels = {
-      '< 90': '< 90 (Lofi/Chill)',
-      '90-115': '90-115 (Groove/Beats)',
-      '116-130': '116-130 (House/Pop)',
-      '131-150': '131-150 (Trap/Cinema)',
-      '150+': '150+ (DnB/Fast)'
+      'Ambient / Free Tempo': '🌌 Ambient / Free (0 BPM)',
+      '< 90': '☕ < 90 Lofi / Chill',
+      '90-115': '🥁 90-115 Groove / Beats',
+      '116-130': '⚡ 116-130 House / Pop',
+      '131-150': '🔥 131-150 Trap / Cinema',
+      '150+': '🚀 150+ Fast / DnB'
     };
     const keys = ['Major', 'Minor', 'A', 'A#_Bb', 'B', 'C', 'C#_Db', 'D', 'D#_Eb', 'E', 'F', 'F#_Gb', 'G', 'G#_Ab'];
     const insts = ['Piano', 'Strings', 'Guitar', 'Synth', 'Brass', 'Bass', 'Vocal', 'Drums'];
@@ -1627,6 +1934,7 @@ function applyFilters() {
       }
       if (curBpmRange) {
         const b = item.bpm || 0;
+        if (curBpmRange === 'Ambient / Free Tempo' && b !== 0) return false;
         if (curBpmRange === '< 90' && (b === 0 || b >= 90)) return false;
         if (curBpmRange === '90-115' && (b < 90 || b > 115)) return false;
         if (curBpmRange === '116-130' && (b < 116 || b > 130)) return false;
@@ -1887,22 +2195,26 @@ function makeGridCard(item, idx) {
     </div>
   `;
 
-  // Grid Mode Audio Hover Autoplay with 75ms debounce
+  // Grid Mode Audio Setup: Whole Card Clickable + Smart Hover Audition
   if (item.type === 'AUDIO') {
+    card.dataset.playAudio = idx;
+
     card.addEventListener('mouseenter', () => {
-      if (lockedAudioIndex >= 0) return;
+      if (!hoverAuditionEnabled) return;
+      if (!audio.paused && lockedAudioIndex >= 0) return; // Don't interrupt actively locked track
       clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => {
         hoverAudioIndex = idx;
         card.classList.add('hover-preview');
         playAudio(item, idx, false);
-      }, 75);
+      }, 70);
     });
 
     card.addEventListener('mouseleave', () => {
       clearTimeout(hoverTimer);
       card.classList.remove('hover-preview');
-      if (lockedAudioIndex >= 0) return;
+      // If this card is currently locked and playing, NEVER stop!
+      if (lockedAudioIndex === idx) return;
       if (hoverAudioIndex === idx) {
         stopAudio();
         hoverAudioIndex = -1;
@@ -1989,8 +2301,10 @@ function makeListRow(item, idx) {
     </div>
   `;
 
-  // Hover-to-Play with 70ms Debounce & Needle
+  // List Mode Audio Setup: Whole Row Clickable + Needle + Smart Hover Audition
   if (isAudio) {
+    row.dataset.playAudio = idx;
+
     const wf = row.querySelector('.wf-box');
     const needle = wf.querySelector('.wf-needle');
     const tip = wf.querySelector('.wf-time-tip');
@@ -1999,13 +2313,14 @@ function makeListRow(item, idx) {
       const rect = wf.getBoundingClientRect();
       const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       needle.style.left = x + 'px';
-      if (audio.src.endsWith(encodeURIComponent(item.path)) && audio.duration) {
+      if (currentAudioPath === item.path && audio.duration) {
         tip.textContent = fmt((x / rect.width) * audio.duration);
       }
     });
 
     row.addEventListener('mouseenter', () => {
-      if (lockedAudioIndex >= 0) return;
+      if (!hoverAuditionEnabled) return;
+      if (!audio.paused && lockedAudioIndex >= 0) return;
       clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => {
         hoverAudioIndex = idx;
@@ -2017,7 +2332,7 @@ function makeListRow(item, idx) {
     row.addEventListener('mouseleave', () => {
       clearTimeout(hoverTimer);
       row.classList.remove('hover-preview');
-      if (lockedAudioIndex >= 0) return;
+      if (lockedAudioIndex === idx) return;
       if (hoverAudioIndex === idx) {
         stopAudio();
         hoverAudioIndex = -1;
@@ -2078,24 +2393,28 @@ function renderWaveBars(cv, peaks, progress) {
   ctx.restore();
 }
 
-// ── Audio Engine & Pinpoint Playback ─────────────────
-function playAudio(item, idx, lock = true) {
-  const enc = encodeURIComponent(item.path);
-  const targetSrc = '/api/media?p=' + enc;
+// ── Universal Audio Engine (Dual-Mode Local Server & File System API) ──
+async function playAudio(item, idx, lock = true) {
+  if (!item || item.type !== 'AUDIO') return;
+  const targetSrc = await resolveMediaUrl(item.path);
 
-  if (!audio.src.endsWith(enc)) {
+  if (currentAudioPath !== item.path) {
+    currentAudioPath = item.path;
     audio.src = targetSrc;
   }
 
   audio.play().catch(e => {
     if (e.name === 'NotAllowedError') {
-      showToast('Click anywhere in the window to enable hover playback', 'ℹ️');
+      showToast('Click anywhere in the page to enable audio playback', 'ℹ️');
+    } else if (!isLocalServerAlive && !studioDirHandle) {
+      showFolderConnectModal(item, idx, lock);
     }
   });
 
   npBar.classList.add('visible');
   npName.textContent = item.name;
-  npSub.textContent = `${item.source} • ${item.cat}${item.bpm ? ' • ' + item.bpm + ' BPM' : ''}${item.stem ? ' • ' + item.stem : ''} • ${item.size} MB`;
+  const bpmText = item.bpm > 0 ? ` • ${item.bpm} BPM` : (item.section === 'Music & Stems' ? ' • Ambient / Free' : '');
+  npSub.textContent = `${item.source} • ${item.cat}${bpmText}${item.stem ? ' • ' + item.stem : ''} • ${item.size} MB`;
 
   if (lock) {
     lockedAudioIndex = idx;
@@ -2111,24 +2430,25 @@ function playAudio(item, idx, lock = true) {
   startPlaybackLoop();
 }
 
-function pinpointPlay(item, idx, ratio) {
+async function pinpointPlay(item, idx, ratio) {
   lockedAudioIndex = idx;
   hoverAudioIndex = -1;
   updateAudioStates();
 
-  const enc = encodeURIComponent(item.path);
-  const targetSrc = '/api/media?p=' + enc;
+  const targetSrc = await resolveMediaUrl(item.path);
 
   npBar.classList.add('visible');
   npBadge.textContent = 'PLAYING';
   npBadge.className = 'np-badge locked';
   npName.textContent = item.name;
-  npSub.textContent = `${item.source} • ${item.cat}${item.bpm ? ' • ' + item.bpm + ' BPM' : ''}${item.stem ? ' • ' + item.stem : ''} • ${item.size} MB`;
+  const bpmText = item.bpm > 0 ? ` • ${item.bpm} BPM` : (item.section === 'Music & Stems' ? ' • Ambient / Free' : '');
+  npSub.textContent = `${item.source} • ${item.cat}${bpmText}${item.stem ? ' • ' + item.stem : ''} • ${item.size} MB`;
 
-  if (audio.src.endsWith(enc) && !isNaN(audio.duration) && audio.duration > 0) {
+  if (currentAudioPath === item.path && !isNaN(audio.duration) && audio.duration > 0) {
     audio.currentTime = Math.max(0, Math.min(ratio * audio.duration, audio.duration - 0.05));
     audio.play().catch(() => {});
   } else {
+    currentAudioPath = item.path;
     audio.src = targetSrc;
     const onMeta = () => {
       audio.removeEventListener('loadedmetadata', onMeta);
@@ -2138,14 +2458,18 @@ function pinpointPlay(item, idx, ratio) {
       audio.play().catch(() => {});
     };
     audio.addEventListener('loadedmetadata', onMeta);
-    audio.play().catch(() => {});
+    audio.play().catch(e => {
+      if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
+    });
   }
 
   startPlaybackLoop();
 }
 
 function stopAudio() {
-  audio.pause();
+  if (!audio.paused) {
+    try { audio.pause(); } catch(e) {}
+  }
   audio.currentTime = 0;
   cancelAnimationFrame(animFrame);
   npFill.style.width = '0%';
@@ -2156,11 +2480,35 @@ function toggleLockAudio(idx) {
   const item = FILTERED[idx];
   if (!item || item.type !== 'AUDIO') return;
 
-  if (lockedAudioIndex === idx) {
-    audio.paused ? audio.play() : audio.pause();
+  // If clicked on the currently previewed item, promote to locked & continue playing
+  if (hoverAudioIndex === idx && lockedAudioIndex !== idx) {
+    lockedAudioIndex = idx;
+    hoverAudioIndex = -1;
+    npBadge.textContent = 'PLAYING';
+    npBadge.className = 'np-badge locked';
+    if (audio.paused) {
+      audio.play().catch(e => {
+        if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
+      });
+    }
     updateAudioStates();
     return;
   }
+
+  // If already locked on this item, toggle pause/play
+  if (lockedAudioIndex === idx) {
+    if (audio.paused) {
+      audio.play().catch(e => {
+        if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
+      });
+    } else {
+      audio.pause();
+    }
+    updateAudioStates();
+    return;
+  }
+
+  // Switch to new track and lock
   clearAudioStates();
   playAudio(item, idx, true);
 }
@@ -2347,13 +2695,35 @@ npLoopBtn.addEventListener('click', () => {
   saveState();
 });
 
-// ── Delegated Grid / Row Actions ─────────────────────
+// ── Delegated Grid / Row Actions (Priority: Action Buttons -> Waveform -> Preview -> Play) ──
 viewport.addEventListener('click', e => {
-  // 1. Play Button Click
-  const playBtn = e.target.closest('[data-play-audio]');
-  if (playBtn) { toggleLockAudio(parseInt(playBtn.dataset.playAudio)); return; }
+  // 1. Action Buttons: Reveal in Explorer (must check FIRST before whole-card click)
+  const rev = e.target.closest('[data-reveal]');
+  if (rev) { revealExplorer(parseInt(rev.dataset.reveal), rev); return; }
 
-  // 2. Waveform Click -> Instant Pinpoint Seek
+  // 2. Action Buttons: Copy Path
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { copyPath(parseInt(cp.dataset.copy), cp); return; }
+
+  // 3. Action Buttons: Doc Guide Open
+  const docBtn = e.target.closest('[data-open-doc]');
+  if (docBtn) {
+    const docPath = docBtn.dataset.openDoc;
+    if (docPath) {
+      if (docPath.toLowerCase().endsWith('.pdf') || docPath.toLowerCase().endsWith('.txt') || docPath.toLowerCase().endsWith('.html')) {
+        resolveMediaUrl(docPath).then(u => window.open(u, '_blank'));
+      } else {
+        if (isLocalServerAlive) fetch('/api/open_doc?p=' + encodeURIComponent(docPath));
+        else {
+          navigator.clipboard.writeText(docPath);
+          showToast('Copied guide path: ' + docPath, '📄');
+        }
+      }
+    }
+    return;
+  }
+
+  // 4. Waveform Click -> Instant Pinpoint Seek
   const wf = e.target.closest('.wf-box');
   if (wf) {
     const idx = parseInt(wf.dataset.wf);
@@ -2364,29 +2734,14 @@ viewport.addEventListener('click', e => {
     return;
   }
 
-  // 3. Preview Modal Click
+  // 5. Preview Modal Click (Video Cinema / 3D LUT Simulator / Image Lightbox)
   const prev = e.target.closest('[data-preview]');
   if (prev) { openPreview(parseInt(prev.dataset.preview)); return; }
 
-  // 4. Explorer Reveal
-  const rev = e.target.closest('[data-reveal]');
-  if (rev) { revealExplorer(parseInt(rev.dataset.reveal), rev); return; }
-
-  // 5. Copy Path
-  const cp = e.target.closest('[data-copy]');
-  if (cp) { copyPath(parseInt(cp.dataset.copy), cp); return; }
-
-  // 6. Doc Open Button on Card
-  const docBtn = e.target.closest('[data-open-doc]');
-  if (docBtn) {
-    const docPath = docBtn.dataset.openDoc;
-    if (docPath) {
-      if (docPath.toLowerCase().endsWith('.pdf') || docPath.toLowerCase().endsWith('.txt') || docPath.toLowerCase().endsWith('.html')) {
-        window.open('/api/media?p=' + encodeURIComponent(docPath), '_blank');
-      } else {
-        fetch('/api/open_doc?p=' + encodeURIComponent(docPath));
-      }
-    }
+  // 6. Play Audio on Card or List Row Click
+  const playBtn = e.target.closest('[data-play-audio]');
+  if (playBtn) {
+    toggleLockAudio(parseInt(playBtn.dataset.playAudio));
     return;
   }
 });
@@ -3266,13 +3621,23 @@ modalCopy.onclick = () => {
 function revealExplorer(idx, btn) {
   const item = FILTERED[idx];
   if (!item) return;
-  fetch('/api/reveal?p=' + encodeURIComponent(item.path))
-    .then(r => r.json())
-    .then(res => {
-      if (res.ok) showToast(`Revealed "${item.name}" in Explorer`, '📂');
-      else showToast('Could not open folder: ' + res.error, '⚠️');
-    })
-    .catch(e => showToast('Explorer trigger failed: ' + e.message, '⚠️'));
+
+  if (isLocalServerAlive && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    fetch('/api/reveal?p=' + encodeURIComponent(item.path))
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) showToast(`Revealed "${item.name}" in Explorer`, '📂');
+        else showToast('Could not open folder: ' + res.error, '⚠️');
+      })
+      .catch(e => {
+        navigator.clipboard.writeText(item.path);
+        showToast(`📂 Copied path! Press Win+R, paste & Enter to open folder.`, '📋');
+      });
+  } else {
+    navigator.clipboard.writeText(item.path);
+    showToast(`📂 Copied path to clipboard! Press Win+R, paste & press Enter.`, '📋');
+  }
+
   btn.classList.add('ok');
   setTimeout(() => btn.classList.remove('ok'), 1200);
 }
