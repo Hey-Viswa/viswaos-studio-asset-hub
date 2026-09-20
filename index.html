@@ -684,23 +684,43 @@ body {
   font-family: var(--mono); font-size: 11px; color: #f59e0b; width: 34px; text-align: right;
 }
 .lut-stage-wrap {
-  flex: 1; min-height: 440px; max-height: 62vh; position: relative;
-  display: flex; align-items: center; justify-content: center;
-  background: #020204; cursor: ew-resize; padding: 14px;
+  flex: 1; min-height: 480px; max-height: 65vh; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #020204; cursor: ew-resize; padding: 16px; overflow: hidden;
 }
 .lut-canvas-container {
-  position: relative; max-width: 100%; max-height: 100%;
-  aspect-ratio: 16 / 9; box-shadow: 0 20px 50px rgba(0,0,0,0.85);
-  border-radius: 6px; overflow: hidden; border: 1px solid #1f1f26;
+  position: relative; width: min(880px, 94%); aspect-ratio: 16 / 9;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.85);
+  border-radius: 6px; overflow: hidden; border: 1px solid #1f1f26; background: #0a0a0f;
+  margin: auto;
 }
 .lut-canvas-container canvas {
-  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
   display: block;
 }
 .lut-canvas-graded { z-index: 1; }
 .lut-canvas-original {
   z-index: 2;
   clip-path: inset(0 calc(100% - var(--split-pos, 50%)) 0 0);
+}
+.lut-video-transport {
+  display: none; align-items: center; gap: 12px; padding: 8px 16px;
+  background: rgba(14,14,18,0.95); border: 1px solid var(--border); border-radius: 6px;
+  margin-top: 10px; width: min(880px, 94%); z-index: 15;
+}
+.lut-video-transport.active { display: flex; }
+.lut-video-transport .btn-play-sim {
+  background: #f59e0b; color: #000; border: none; border-radius: 4px;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-weight: 700;
+}
+.lut-video-scrub {
+  flex: 1; height: 4px; appearance: none; background: #2a2a35; border-radius: 2px;
+  outline: none; cursor: pointer;
+}
+.lut-video-scrub::-webkit-slider-thumb {
+  appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: #f59e0b; cursor: pointer;
 }
 .lut-split-bar {
   position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.95);
@@ -2513,7 +2533,33 @@ function cleanupHoverVideo() {
 }
 
 // ── 3D LUT Color Grading Simulator Engine ────────────
+const LOG_VIDEO_PATH = 'E:\\Videos\\06 - Footage & Archives\\Log & Raw Camera Test Footage\\Cinematic 4K Log Test Footage (UHD 60fps).mp4';
+
 const LUT_TEST_FRAMES = [
+  {
+    id: 'log_macro',
+    label: '🎬 4K Log (Desert Dune)',
+    title: 'Real 4K flat log test footage (macro focus)',
+    path: 'E:\\Videos\\06 - Footage & Archives\\Log & Raw Camera Test Footage\\frame_log_01_desert_dune.jpg'
+  },
+  {
+    id: 'log_warm',
+    label: '🎬 4K Log (Warm Horizon)',
+    title: 'Real 4K flat log test footage (horizon & ground)',
+    path: 'E:\\Videos\\06 - Footage & Archives\\Log & Raw Camera Test Footage\\frame_log_02_warm_horizon.jpg'
+  },
+  {
+    id: 'log_contrast',
+    label: '🎬 4K Log (Contrast)',
+    title: 'Real 4K flat log test footage (high contrast stones)',
+    path: 'E:\\Videos\\06 - Footage & Archives\\Log & Raw Camera Test Footage\\frame_log_03_high_contrast.jpg'
+  },
+  {
+    id: 'log_sunset',
+    label: '🎬 4K Log (Sunset Sky)',
+    title: 'Real 4K flat log test footage (sky & atmospheric falloff)',
+    path: 'E:\\Videos\\06 - Footage & Archives\\Log & Raw Camera Test Footage\\frame_log_04_sunset_atmosphere.jpg'
+  },
   {
     id: 'portrait',
     label: '👤 Portrait',
@@ -2534,7 +2580,7 @@ const LUT_TEST_FRAMES = [
   },
   {
     id: 'cinema',
-    label: '🎬 Cinema',
+    label: '🎥 Cinema',
     title: 'Dramatic cinematography & high contrast',
     path: 'E:\\Videos\\03 - Color Grading & LUTs\\[Color Grading & LUTs] Pro LUTs & Camera Profiles\\01 - CREATIVE COLOR LUTS (BY STYLE)\\Cinematography\\Cinematography Preview.jpg'
   }
@@ -2544,6 +2590,9 @@ let activeLutItem = null;
 let currentLutObj = null;
 let currentFrameIdx = 0;
 let customFrameDataUrl = null;
+let isVideoSimMode = false;
+let simVideo = null;
+let simVideoAnim = null;
 let currentLutIntensity = 1.0;
 let lutSplitRatio = 0.50;
 let isDraggingSplit = false;
@@ -2631,7 +2680,7 @@ function apply3DLut(srcImageData, dstImageData, lutObj, intensity = 1.0) {
 
     // Red
     const r_c00 = lut[idx000] * (1 - dr) + lut[idx100] * dr;
-    const r_c10 = lut[idx010] * (1 - dr) + lut[idx100] * dr;
+    const r_c10 = lut[idx010] * (1 - dr) + lut[idx110] * dr;
     const r_c01 = lut[idx001] * (1 - dr) + lut[idx101] * dr;
     const r_c11 = lut[idx011] * (1 - dr) + lut[idx111] * dr;
     const r_c0 = r_c00 * (1 - dg) + r_c10 * dg;
@@ -2692,10 +2741,13 @@ async function openLutSimulator(item) {
         <div class="lut-frames-group">
           <span class="lut-frames-label">Reference Frame:</span>
           ${LUT_TEST_FRAMES.map((f, i) => `
-            <button class="lut-frame-btn ${i === currentFrameIdx && !customFrameDataUrl ? 'active' : ''}" data-frame-idx="${i}" title="${escapeAttr(f.title)}">
+            <button class="lut-frame-btn ${i === currentFrameIdx && !customFrameDataUrl && !isVideoSimMode ? 'active' : ''}" data-frame-idx="${i}" title="${escapeAttr(f.title)}">
               ${f.label}
             </button>
           `).join('')}
+          <button class="lut-frame-btn ${isVideoSimMode ? 'active' : ''}" id="btnLutVideoMode" title="Stream live 4K Log footage through this 3D LUT">
+            🎥 Live 4K Log Video
+          </button>
           <button class="lut-frame-btn ${customFrameDataUrl ? 'active' : ''}" id="btnLutCustomUpload">
             📁 Upload Custom
           </button>
@@ -2724,10 +2776,18 @@ async function openLutSimulator(item) {
               <svg viewBox="0 0 24 24"><polygon points="8,12 14,7 14,17"/><polygon points="16,12 10,7 10,17"/></svg>
             </div>
           </div>
-          <div class="lut-tag-badge lut-tag-before">ORIGINAL / RAW</div>
+          <div class="lut-tag-badge lut-tag-before">ORIGINAL / RAW LOG</div>
           <div class="lut-tag-badge lut-tag-after">GRADED (${escapeHtml(item.name.replace('.cube',''))})</div>
           <div class="lut-split-ratio-tip" id="lutSplitTip">${Math.round(lutSplitRatio * 100)}% ORIGINAL / ${Math.round((1 - lutSplitRatio) * 100)}% GRADED</div>
         </div>
+
+        <!-- Video Transport Bar (for live Log video playback) -->
+        <div class="lut-video-transport ${isVideoSimMode ? 'active' : ''}" id="lutVideoTransport">
+          <button class="btn-play-sim" id="btnPlaySimVideo" title="Play/Pause 4K Log Video">▶</button>
+          <input type="range" class="lut-video-scrub" id="lutVideoScrub" min="0" max="100" value="0" step="0.1">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--fg-dim)" id="lutVideoTime">0:00 / 0:23</span>
+        </div>
+
         <div class="lut-loading-overlay" id="lutLoadingOverlay">
           <div class="spinner"></div>
           <span>Simulating 3D Color Cube...</span>
@@ -2763,13 +2823,14 @@ async function openLutSimulator(item) {
 
   previewModal.classList.add('open');
 
-  await runLutSimulation();
+  // Bind events IMMEDIATELY so buttons (like Reveal and Sliders) work right away
   bindLutSimulatorEvents();
+  await runLutSimulation();
 }
 
 async function runLutSimulation() {
   const loading = document.getElementById('lutLoadingOverlay');
-  if (loading) loading.style.display = 'flex';
+  if (loading && !isVideoSimMode) loading.style.display = 'flex';
 
   try {
     // 1. Fetch .cube LUT file if not already parsed
@@ -2784,16 +2845,24 @@ async function runLutSimulation() {
       }
     }
 
-    // 2. Load Reference Image
-    const img = await loadActiveSimImage();
-
-    // 3. Setup Canvases
     const cvOrig = document.getElementById('lutCanvasOriginal');
     const cvGrad = document.getElementById('lutCanvasGraded');
     if (!cvOrig || !cvGrad) return;
 
-    const W = 640;
-    const H = Math.round(W * (img.height / img.width)) || 360;
+    if (isVideoSimMode) {
+      setupVideoSimulation();
+      return;
+    }
+
+    // Stop video simulation if switching to static frame
+    stopVideoSimulation();
+
+    // 2. Load Reference Image
+    const img = await loadActiveSimImage();
+
+    // 3. Setup Canvases with reliable non-zero dimensions
+    const W = 720;
+    const H = Math.round(W * (img.height / img.width)) || 405;
     cvOrig.width = W; cvOrig.height = H;
     cvGrad.width = W; cvGrad.height = H;
 
@@ -2815,12 +2884,86 @@ async function runLutSimulation() {
   }
 }
 
+function stopVideoSimulation() {
+  if (simVideoAnim) {
+    cancelAnimationFrame(simVideoAnim);
+    simVideoAnim = null;
+  }
+  if (simVideo) {
+    simVideo.pause();
+  }
+}
+
+function setupVideoSimulation() {
+  const cvOrig = document.getElementById('lutCanvasOriginal');
+  const cvGrad = document.getElementById('lutCanvasGraded');
+  const transport = document.getElementById('lutVideoTransport');
+  const btnPlay = document.getElementById('btnPlaySimVideo');
+  const scrub = document.getElementById('lutVideoScrub');
+  const timeLbl = document.getElementById('lutVideoTime');
+  if (!cvOrig || !cvGrad) return;
+
+  if (!simVideo) {
+    simVideo = document.createElement('video');
+    simVideo.crossOrigin = 'anonymous';
+    simVideo.src = '/api/media?p=' + encodeURIComponent(LOG_VIDEO_PATH);
+    simVideo.loop = true;
+    simVideo.muted = true;
+    simVideo.playsInline = true;
+  }
+
+  const W = 640;
+  const H = 360;
+  cvOrig.width = W; cvOrig.height = H;
+  cvGrad.width = W; cvGrad.height = H;
+
+  const ctxOrig = cvOrig.getContext('2d', { willReadFrequently: true });
+  const ctxGrad = cvGrad.getContext('2d', { willReadFrequently: true });
+
+  function renderVideoFrame() {
+    if (!isVideoSimMode) return;
+    if (simVideo.readyState >= 2) {
+      ctxOrig.drawImage(simVideo, 0, 0, W, H);
+      const src = ctxOrig.getImageData(0, 0, W, H);
+      const dst = ctxGrad.createImageData(W, H);
+      if (currentLutObj) {
+        apply3DLut(src, dst, currentLutObj, currentLutIntensity);
+        ctxGrad.putImageData(dst, 0, 0);
+      }
+      if (scrub && simVideo.duration) {
+        scrub.value = (simVideo.currentTime / simVideo.duration) * 100;
+        if (timeLbl) timeLbl.textContent = `${fmt(simVideo.currentTime)} / ${fmt(simVideo.duration)}`;
+      }
+    }
+    if (!simVideo.paused && !simVideo.ended) {
+      simVideoAnim = requestAnimationFrame(renderVideoFrame);
+    }
+  }
+
+  simVideo.onloadeddata = () => {
+    simVideo.play().then(() => {
+      if (btnPlay) btnPlay.textContent = '❚❚';
+      simVideoAnim = requestAnimationFrame(renderVideoFrame);
+    }).catch(() => {
+      // Autoplay blocked: render current frame paused
+      renderVideoFrame();
+    });
+  };
+
+  if (simVideo.readyState >= 2) {
+    simVideo.play().then(() => {
+      if (btnPlay) btnPlay.textContent = '❚❚';
+      simVideoAnim = requestAnimationFrame(renderVideoFrame);
+    }).catch(() => renderVideoFrame());
+  }
+}
+
 function loadActiveSimImage() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (customFrameDataUrl) {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onerror = () => resolve(createFallbackTestPattern());
       img.src = customFrameDataUrl;
       return;
     }
@@ -2836,9 +2979,33 @@ function loadActiveSimImage() {
       frameImageCache[frame.path] = img;
       resolve(img);
     };
-    img.onerror = reject;
+    img.onerror = () => {
+      console.warn('Could not load test frame:', frame.path);
+      resolve(createFallbackTestPattern());
+    };
     img.src = '/api/media?p=' + encodeURIComponent(frame.path);
   });
+}
+
+function createFallbackTestPattern() {
+  const c = document.createElement('canvas');
+  c.width = 640; c.height = 360;
+  const ctx = c.getContext('2d');
+  // Gradient sky and landscape pattern
+  const grad = ctx.createLinearGradient(0, 0, 0, 360);
+  grad.addColorStop(0, '#5b7c99');
+  grad.addColorStop(0.5, '#c59b6d');
+  grad.addColorStop(1, '#3b4d28');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 640, 360);
+
+  // Color checker bars
+  const colors = ['#b8826b', '#cfa788', '#2b4d6b', '#5c8041', '#e0c952', '#a83c3c'];
+  colors.forEach((col, i) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(i * 106, 260, 106, 100);
+  });
+  return c;
 }
 
 function setLutSplit(ratio) {
@@ -2862,6 +3029,9 @@ function bindLutSimulatorEvents() {
   const btnReveal = document.getElementById('btnLutReveal');
   const btnCopy = document.getElementById('btnLutCopy');
   const btnToggleSplit = document.getElementById('btnToggleSplitView');
+  const btnVideoMode = document.getElementById('btnLutVideoMode');
+  const btnPlaySim = document.getElementById('btnPlaySimVideo');
+  const scrub = document.getElementById('lutVideoScrub');
 
   function onPointerMove(e) {
     if (!isDraggingSplit) return;
@@ -2874,6 +3044,8 @@ function bindLutSimulatorEvents() {
 
   if (stage) {
     stage.onmousedown = e => {
+      // Don't drag split if clicking transport buttons
+      if (e.target.closest('#lutVideoTransport')) return;
       isDraggingSplit = true;
       onPointerMove(e);
     };
@@ -2895,9 +3067,52 @@ function bindLutSimulatorEvents() {
       btn.classList.add('active');
       currentFrameIdx = parseInt(btn.dataset.frameIdx);
       customFrameDataUrl = null;
+      isVideoSimMode = false;
+      const transport = document.getElementById('lutVideoTransport');
+      if (transport) transport.classList.remove('active');
       await runLutSimulation();
     };
   });
+
+  if (btnVideoMode) {
+    btnVideoMode.onclick = async () => {
+      document.querySelectorAll('.lut-frame-btn').forEach(b => b.classList.remove('active'));
+      btnVideoMode.classList.add('active');
+      isVideoSimMode = true;
+      customFrameDataUrl = null;
+      const transport = document.getElementById('lutVideoTransport');
+      if (transport) transport.classList.add('active');
+      await runLutSimulation();
+      showToast('Streaming 4K Log Video through 3D LUT', '🎥');
+    };
+  }
+
+  if (btnPlaySim) {
+    btnPlaySim.onclick = () => {
+      if (!simVideo) return;
+      if (simVideo.paused) {
+        simVideo.play();
+        btnPlaySim.textContent = '❚❚';
+        if (!simVideoAnim) {
+          setupVideoSimulation();
+        }
+      } else {
+        simVideo.pause();
+        btnPlaySim.textContent = '▶';
+        if (simVideoAnim) {
+          cancelAnimationFrame(simVideoAnim);
+          simVideoAnim = null;
+        }
+      }
+    };
+  }
+
+  if (scrub) {
+    scrub.oninput = () => {
+      if (!simVideo || !simVideo.duration) return;
+      simVideo.currentTime = (parseFloat(scrub.value) / 100) * simVideo.duration;
+    };
+  }
 
   const btnUpload = document.getElementById('btnLutCustomUpload');
   if (btnUpload && fileInput) {
@@ -2917,6 +3132,9 @@ function bindLutSimulatorEvents() {
     const reader = new FileReader();
     reader.onload = async ev => {
       customFrameDataUrl = ev.target.result;
+      isVideoSimMode = false;
+      const transport = document.getElementById('lutVideoTransport');
+      if (transport) transport.classList.remove('active');
       document.querySelectorAll('.lut-frame-btn').forEach(b => b.classList.remove('active'));
       if (btnUpload) btnUpload.classList.add('active');
       await runLutSimulation();
@@ -2959,8 +3177,14 @@ function bindLutSimulatorEvents() {
 
   if (btnReveal) {
     btnReveal.onclick = () => {
-      if (activeLutItem) fetch('/api/reveal?p=' + encodeURIComponent(activeLutItem.path));
-      showToast('Opened LUT in Explorer', '📂');
+      if (!activeLutItem) return;
+      fetch('/api/reveal?p=' + encodeURIComponent(activeLutItem.path))
+        .then(r => r.json())
+        .then(res => {
+          if (res.ok) showToast('Opened LUT folder in Explorer', '📂');
+          else showToast('Could not open folder: ' + res.error, '⚠️');
+        })
+        .catch(err => showToast('Explorer trigger error: ' + err.message, '⚠️'));
     };
   }
   if (btnCopy) {
@@ -3007,6 +3231,8 @@ function openPreview(idx) {
 }
 
 function closePreview() {
+  stopVideoSimulation();
+  isVideoSimMode = false;
   previewModal.classList.remove('open');
   modalBox.classList.remove('modal-lut');
   if (modalFooter) modalFooter.style.display = 'flex';
@@ -3018,7 +3244,15 @@ modalClose.onclick = closePreview;
 previewModal.onclick = e => { if (e.target === previewModal) closePreview(); };
 
 modalReveal.onclick = () => {
-  if (modalActiveItem) fetch('/api/reveal?p=' + encodeURIComponent(modalActiveItem.path));
+  if (modalActiveItem) {
+    fetch('/api/reveal?p=' + encodeURIComponent(modalActiveItem.path))
+      .then(r => r.json())
+      .then(res => {
+        if (res.ok) showToast('Opened in Explorer', '📂');
+        else showToast('Could not open folder: ' + res.error, '⚠️');
+      })
+      .catch(e => showToast('Explorer trigger failed: ' + e.message, '⚠️'));
+  }
 };
 modalCopy.onclick = () => {
   if (modalActiveItem) {
@@ -3032,7 +3266,13 @@ modalCopy.onclick = () => {
 function revealExplorer(idx, btn) {
   const item = FILTERED[idx];
   if (!item) return;
-  fetch('/api/reveal?p=' + encodeURIComponent(item.path));
+  fetch('/api/reveal?p=' + encodeURIComponent(item.path))
+    .then(r => r.json())
+    .then(res => {
+      if (res.ok) showToast(`Revealed "${item.name}" in Explorer`, '📂');
+      else showToast('Could not open folder: ' + res.error, '⚠️');
+    })
+    .catch(e => showToast('Explorer trigger failed: ' + e.message, '⚠️'));
   btn.classList.add('ok');
   setTimeout(() => btn.classList.remove('ok'), 1200);
 }
