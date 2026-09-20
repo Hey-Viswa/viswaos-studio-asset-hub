@@ -1,0 +1,24 @@
+{
+  "name": "viswaos-studio-asset-hub",
+  "version": "2.0.0",
+  "private": false,
+  "description": "ViswaOS Studio Asset Hub & Media Engine — Professional 27,000+ asset catalog browser with 3D LUT WebGL Simulator, Waveform Engine, and Auto-BPM analysis",
+  "main": "index.html",
+  "scripts": {
+    "start": "python ../sfx_server.py",
+    "deploy": "npx vercel --prod"
+  },
+  "keywords": [
+    "sound-design",
+    "sfx",
+    "film-editing",
+    "music-stems",
+    "bpm-analyzer",
+    "3d-lut",
+    "color-grading",
+    "viswaos",
+    "antigravity"
+  ],
+  "author": "Hey-Viswa",
+  "license": "MIT"
+}
