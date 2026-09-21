@@ -6,10 +6,20 @@
 <title>ViswaOS Studio Asset Hub</title>
 <script>
   try {
-    if (localStorage.getItem('viswaos_theme') === 'light') {
+    let t = localStorage.getItem('viswaos_theme');
+    if (!t) {
+      const raw = localStorage.getItem('viswaos_studio_hub_state_v3') || localStorage.getItem('viswaos_studio_hub_state_v2');
+      if (raw) t = JSON.parse(raw).theme;
+    }
+    // Default to light theme per Viswa's decree, ensuring it NEVER goes dark automatically
+    if (t === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
       document.documentElement.setAttribute('data-theme', 'light');
     }
-  } catch(e) {}
+  } catch(e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1077,6 +1087,47 @@ body {
   padding: 14px 18px;
   box-shadow: var(--btn-shadow);
 }
+
+/* ── Responsive 4K & High-DPI Scaling Engine ────────── */
+@media (min-width: 1921px) {
+  .sidebar { width: 340px; min-width: 340px; }
+  .asset-viewport { padding: 18px 24px 90px; }
+  .wf-box { width: 200px; }
+  .list-row { height: 52px; }
+}
+
+@media (min-width: 2560px) {
+  body { font-size: 14px; }
+  .sidebar { width: 380px; min-width: 380px; }
+  .sidebar-header { padding: 22px 24px 16px; }
+  .brand-title { font-size: 17px; }
+  .nav-group-label { font-size: 11px; margin-bottom: 8px; }
+  .nav-item { height: 40px; font-size: 13px; padding: 0 12px; }
+  .top-toolbar { padding: 14px 28px; gap: 12px; }
+  .search-input { height: 42px; font-size: 14px; padding-left: 42px; }
+  .btn-top-action { height: 42px; font-size: 13px; padding: 0 14px; }
+  .sort-wrapper { height: 42px; }
+  .filter-board { padding: 12px 28px; gap: 10px; }
+  .chip { height: 30px; font-size: 12px; padding: 0 12px; }
+  .pagination-strip { padding: 10px 28px; font-size: 13px; }
+  .page-btn { height: 30px; min-width: 30px; font-size: 12px; }
+  .asset-viewport {
+    padding: 20px 28px 100px;
+    max-width: 2600px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .list-row { height: 56px; padding: 0 16px; gap: 14px; }
+  .row-title { font-size: 14px; }
+  .row-meta { font-size: 12px; gap: 8px; }
+  .btn-play { width: 34px; height: 34px; }
+  .wf-box { width: 220px; height: 36px; }
+  .view-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+  .grid-thumb-wrap { height: 155px; }
+  .now-playing { padding: 12px 28px; gap: 18px; }
+  .np-name { font-size: 13px; }
+  .np-sub { font-size: 11px; }
+}
 </style>
 </head>
 <body>
@@ -1098,11 +1149,7 @@ body {
     <div class="nav-group">
       <div class="nav-group-label">Master Hubs</div>
       <div class="nav-items" id="sectionNav">
-        <button class="nav-item active" data-section="">
-          <div class="nav-item-left"><span>🌐</span><span class="nav-item-name">All Assets</span></div>
-          <span class="nav-item-count" id="countAll">...</span>
-        </button>
-        <button class="nav-item" data-section="Music & Stems">
+        <button class="nav-item active" data-section="Music & Melodic Stems">
           <div class="nav-item-left"><span>🎵</span><span class="nav-item-name">Music & Melodic Stems</span></div>
           <span class="nav-item-count" id="countMusic">...</span>
         </button>
@@ -1110,21 +1157,17 @@ body {
           <div class="nav-item-left"><span>🔊</span><span class="nav-item-name">Sound Design & SFX</span></div>
           <span class="nav-item-count" id="countSFX">...</span>
         </button>
-        <button class="nav-item" data-section="Overlays & Transitions">
+        <button class="nav-item" data-section="Overlays & Footage">
           <div class="nav-item-left"><span>🎬</span><span class="nav-item-name">Overlays & Footage</span></div>
           <span class="nav-item-count" id="countVideo">...</span>
         </button>
-        <button class="nav-item" data-section="Color Grading">
+        <button class="nav-item" data-section="Color Grading & LUTs">
           <div class="nav-item-left"><span>🎨</span><span class="nav-item-name">Color Grading & LUTs</span></div>
           <span class="nav-item-count" id="countLUT">...</span>
         </button>
-        <button class="nav-item" data-section="Motion & Graphics">
+        <button class="nav-item" data-section="Textures & Elements">
           <div class="nav-item-left"><span>🖼️</span><span class="nav-item-name">Textures & Elements</span></div>
           <span class="nav-item-count" id="countGraphics">...</span>
-        </button>
-        <button class="nav-item" data-section="After Effects">
-          <div class="nav-item-left"><span>⚙️</span><span class="nav-item-name">AE Plugins & Presets</span></div>
-          <span class="nav-item-count" id="countAE">...</span>
         </button>
       </div>
     </div>
@@ -1355,7 +1398,7 @@ body {
 
 <script>
 // ── State Management ──────────────────────────────────
-const STORAGE_KEY = 'viswaos_studio_hub_state_v2';
+const STORAGE_KEY = 'viswaos_studio_hub_state_v3';
 
 let RAW_DATA = [];
 let FILTERED = [];
@@ -1704,26 +1747,48 @@ async function resolveMediaUrl(fullPath) {
 function saveState() {
   try {
     const s = {
+      theme: currentTheme,
       curSection, curCreator, curTag,
       curMusicStem, curMusicKey, curMusicInst, curMusicVibe, curSfxCat,
       curBpmRange, curMicroFoley, currentSort,
       hoverAuditionEnabled,
-      searchQuery: searchBox.value,
+      searchQuery: searchBox ? searchBox.value : '',
       currentPage, viewMode,
-      volume: audio.volume,
-      muted: audio.muted,
-      loop: audio.loop
+      volume: audio ? audio.volume : 0.9,
+      muted: audio ? audio.muted : false,
+      loop: audio ? audio.loop : false
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem('viswaos_theme', currentTheme);
   } catch(e) {}
 }
 
 function restoreState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
+    const savedTheme = localStorage.getItem('viswaos_theme');
+    currentTheme = savedTheme || 'light';
+
+    if (!raw) {
+      curSection = 'Music & Melodic Stems';
+      return false;
+    }
     const s = JSON.parse(raw);
-    curSection = s.curSection || '';
+    if (s.theme) currentTheme = s.theme;
+
+    // Clean section mapping (strictly 5 master hubs)
+    let sec = s.curSection || 'Music & Melodic Stems';
+    if (sec === '' || sec === 'All Assets' || sec === 'After Effects' || sec === 'Music & Stems') {
+      sec = 'Music & Melodic Stems';
+    } else if (sec === 'Overlays & Transitions' || sec === 'Footage & Archives') {
+      sec = 'Overlays & Footage';
+    } else if (sec === 'Color Grading') {
+      sec = 'Color Grading & LUTs';
+    } else if (sec === 'Motion & Graphics') {
+      sec = 'Textures & Elements';
+    }
+    curSection = sec;
+
     curCreator = s.curCreator || '';
     curTag = s.curTag || '';
     curMusicStem = s.curMusicStem || '';
@@ -1738,32 +1803,36 @@ function restoreState() {
       hoverAuditionEnabled = !!s.hoverAuditionEnabled;
       if (hoverStateText) {
         hoverStateText.textContent = hoverAuditionEnabled ? 'ON' : 'OFF';
-        hoverStateText.style.color = hoverAuditionEnabled ? '#22c55e' : '#9ca3af';
+        hoverStateText.style.color = hoverAuditionEnabled ? '#22c55e' : 'var(--fg-dim)';
       }
       if (btnHoverToggle) {
         btnHoverToggle.classList.toggle('hover-off', !hoverAuditionEnabled);
       }
     }
-    if (s.searchQuery) {
+    if (s.searchQuery && searchBox) {
       searchQuery = s.searchQuery;
       searchBox.value = searchQuery;
     }
     currentPage = s.currentPage || 1;
-    viewMode = s.viewMode || (curSection === 'Music & Stems' ? 'list' : 'grid');
-    if (s.volume !== undefined) {
+    viewMode = s.viewMode || (curSection === 'Music & Melodic Stems' || curSection === 'Sound Design & SFX' ? 'list' : 'grid');
+    if (s.volume !== undefined && audio) {
       audio.volume = s.volume;
-      npVolSlider.value = s.volume;
+      if (npVolSlider) npVolSlider.value = s.volume;
     }
-    if (s.muted !== undefined) {
+    if (s.muted !== undefined && audio) {
       audio.muted = s.muted;
       updateVolIcon();
     }
-    if (s.loop !== undefined) {
+    if (s.loop !== undefined && audio) {
       audio.loop = s.loop;
-      npLoopBtn.classList.toggle('active', audio.loop);
+      if (npLoopBtn) npLoopBtn.classList.toggle('active', audio.loop);
     }
     return true;
-  } catch(e) { return false; }
+  } catch(e) {
+    curSection = 'Music & Melodic Stems';
+    currentTheme = 'light';
+    return false;
+  }
 }
 
 // ── Toast Helper ─────────────────────────────────────
@@ -1825,7 +1894,7 @@ if (btnOnlyFullMix) {
   restoreState();
 
 // ── Theme Switcher Engine (Editorial Light / Dark) ────
-let currentTheme = localStorage.getItem('viswaos_theme') || 'dark';
+let currentTheme = localStorage.getItem('viswaos_theme') || 'light';
 function applyTheme(theme) {
   currentTheme = theme;
   if (theme === 'light') {
@@ -1842,6 +1911,7 @@ function applyTheme(theme) {
     if (lbl) lbl.textContent = 'Light';
   }
   localStorage.setItem('viswaos_theme', theme);
+  saveState();
   if (viewMode === 'list') {
     viewport.querySelectorAll('.wf-box canvas').forEach(c => c.remove());
     setTimeout(loadWaveforms, 20);
@@ -1919,11 +1989,12 @@ applyTheme(currentTheme);
     if (isLocalServerAlive) {
       resIndex = await fetch('/api/index').catch(() => null);
     }
+    const cacheBuster = '?v=20260921_' + Math.floor(Date.now() / 60000);
     if (!resIndex || !resIndex.ok) {
-      resIndex = await fetch('./vault_data.json').catch(() => null);
+      resIndex = await fetch('./vault_data.json' + cacheBuster).catch(() => null);
     }
     if (!resIndex || !resIndex.ok) {
-      resIndex = await fetch('/vault_data.json').catch(() => null);
+      resIndex = await fetch('/vault_data.json' + cacheBuster).catch(() => null);
     }
     if (!resIndex || !resIndex.ok) {
       throw new Error('Could not reach Vault Server or load vault_data.json');
@@ -2013,22 +2084,24 @@ btnRescan.addEventListener('click', async () => {
 
 // ── Section Counts & Navigation ──────────────────────
 function updateSectionCounts() {
-  const counts = { all: RAW_DATA.length, music: 0, sfx: 0, video: 0, lut: 0, graphics: 0, ae: 0 };
+  const counts = { music: 0, sfx: 0, video: 0, lut: 0, graphics: 0 };
   RAW_DATA.forEach(x => {
-    if (x.section === 'Music & Stems') counts.music++;
+    if (x.section === 'Music & Melodic Stems' || x.section === 'Music & Stems') counts.music++;
     else if (x.section === 'Sound Design & SFX') counts.sfx++;
-    else if (x.section === 'Overlays & Transitions') counts.video++;
-    else if (x.section === 'Color Grading') counts.lut++;
-    else if (x.section === 'Motion & Graphics') counts.graphics++;
-    else if (x.section === 'After Effects') counts.ae++;
+    else if (x.section === 'Overlays & Footage' || x.section === 'Overlays & Transitions' || x.section === 'Footage & Archives') counts.video++;
+    else if (x.section === 'Color Grading & LUTs' || x.section === 'Color Grading') counts.lut++;
+    else if (x.section === 'Textures & Elements' || x.section === 'Motion & Graphics') counts.graphics++;
   });
-  document.getElementById('countAll').textContent = counts.all.toLocaleString();
-  document.getElementById('countMusic').textContent = counts.music.toLocaleString();
-  document.getElementById('countSFX').textContent = counts.sfx.toLocaleString();
-  document.getElementById('countVideo').textContent = counts.video.toLocaleString();
-  document.getElementById('countLUT').textContent = counts.lut.toLocaleString();
-  document.getElementById('countGraphics').textContent = counts.graphics.toLocaleString();
-  document.getElementById('countAE').textContent = counts.ae.toLocaleString();
+  const cMusic = document.getElementById('countMusic');
+  const cSFX = document.getElementById('countSFX');
+  const cVideo = document.getElementById('countVideo');
+  const cLUT = document.getElementById('countLUT');
+  const cGraphics = document.getElementById('countGraphics');
+  if (cMusic) cMusic.textContent = counts.music.toLocaleString();
+  if (cSFX) cSFX.textContent = counts.sfx.toLocaleString();
+  if (cVideo) cVideo.textContent = counts.video.toLocaleString();
+  if (cLUT) cLUT.textContent = counts.lut.toLocaleString();
+  if (cGraphics) cGraphics.textContent = counts.graphics.toLocaleString();
 }
 
 function updateActiveSectionBtn() {
@@ -2055,9 +2128,9 @@ sectionNav.addEventListener('click', e => {
   updateActiveSectionBtn();
 
   // Auto-switch view mode intelligently
-  if (curSection === 'Overlays & Transitions' || curSection === 'Motion & Graphics') {
+  if (curSection === 'Overlays & Footage' || curSection === 'Color Grading & LUTs' || curSection === 'Textures & Elements') {
     setViewMode('grid');
-  } else if (curSection === 'Music & Stems' || curSection === 'Sound Design & SFX') {
+  } else if (curSection === 'Music & Melodic Stems' || curSection === 'Sound Design & SFX') {
     setViewMode('list');
   }
 
@@ -2113,7 +2186,7 @@ creatorsNav.addEventListener('click', e => {
 function renderFilterBoard() {
   chipsBar.innerHTML = '';
 
-  if (curSection === 'Music & Stems') {
+  if (curSection === 'Music & Melodic Stems' || curSection === 'Music & Stems') {
     // 5-Tier Music Board: Stems, BPM, Keys, Instruments, Vibes
     const stems = ['Full Mix', 'Full Track', 'Bass', 'Drums', 'Melody', 'Instruments', 'Vocals', 'Pads & Drones', 'Melodic Hits', 'Melodic Risers', 'Tonal Transitions'];
     const bpms = ['Ambient / Free Tempo', '< 90', '90-115', '116-130', '131-150', '150+'];
@@ -2149,22 +2222,17 @@ function renderFilterBoard() {
     const microFoley = ['Footsteps & Movement', 'Cloth & Fabric', 'Paper & Books', 'Doors & Latches', 'Glass & Ceramics', 'Keys & Metal', 'Wood & Creaks', 'Typing & Clicks', 'Domestic & Tools'];
     chipsBar.appendChild(buildChipRow('Micro-Foley', microFoley, curMicroFoley, v => { curMicroFoley = v; }));
 
-  } else if (curSection === 'Overlays & Transitions') {
-    const ov = ['Overlay', 'Transition', 'Leak', 'Burn', 'Glitch', 'Footage', 'MOGRT'];
+  } else if (curSection === 'Overlays & Footage' || curSection === 'Overlays & Transitions') {
+    const ov = ['Overlay', 'Transition', 'Leak', 'Burn', 'Glitch', 'Footage'];
     chipsBar.appendChild(buildChipRow('Elements', ov, curTag, v => { curTag = v; }));
 
-  } else if (curSection === 'Color Grading') {
+  } else if (curSection === 'Color Grading & LUTs' || curSection === 'Color Grading') {
     const luts = ['Film', 'Camera', 'Log', 'Creative', 'LUT'];
     chipsBar.appendChild(buildChipRow('Profile', luts, curTag, v => { curTag = v; }));
 
-  } else if (curSection === 'Motion & Graphics') {
+  } else if (curSection === 'Textures & Elements' || curSection === 'Motion & Graphics') {
     const gfx = ['Paper', 'Halftone', 'Texture', 'Cutout', 'Collage'];
     chipsBar.appendChild(buildChipRow('Texture', gfx, curTag, v => { curTag = v; }));
-
-  } else {
-    // All items
-    const allChips = ['Audio', 'Video', 'Images', 'LUTs', 'Presets'];
-    chipsBar.appendChild(buildChipRow('Media', allChips, curTag, v => { curTag = v; }));
   }
 }
 
@@ -2239,15 +2307,17 @@ function applyFilters() {
     if (curSection && item.section !== curSection) return false;
     if (curCreator && item.source !== curCreator) return false;
 
-    // Hard Runtime Section Purity Guard
+    // Hard Runtime Section Purity Guard (5 Dedicated Hubs Only)
     const ext = (item.path.split('.').pop() || '').toLowerCase();
-    if (curSection === 'Color Grading') {
+    if (['aep', 'ffx', 'jsx', 'jsxbin'].includes(ext)) return false;
+
+    if (curSection === 'Color Grading & LUTs' || curSection === 'Color Grading') {
       if (item.type !== 'LUT' || !['cube', '3dl', 'look'].includes(ext)) return false;
-    } else if (curSection === 'Overlays & Transitions' || curSection === 'Footage & Archives') {
+    } else if (curSection === 'Overlays & Footage' || curSection === 'Overlays & Transitions' || curSection === 'Footage & Archives') {
       if (item.type !== 'VIDEO' || !['mp4', 'mov', 'mkv', 'avi', 'webm', 'wmv'].includes(ext)) return false;
-    } else if (curSection === 'Motion & Graphics') {
+    } else if (curSection === 'Textures & Elements' || curSection === 'Motion & Graphics') {
       if (!['png', 'jpg', 'jpeg', 'webp', 'svg', 'ai'].includes(ext)) return false;
-    } else if (curSection === 'Music & Stems') {
+    } else if (curSection === 'Music & Melodic Stems' || curSection === 'Music & Stems') {
       if (item.type !== 'AUDIO' || !['mp3', 'wav', 'm4a', 'flac'].includes(ext)) return false;
     } else if (curSection === 'Sound Design & SFX') {
       if (item.type !== 'AUDIO' || !['wav', 'mp3', 'm4a', 'aif', 'flac'].includes(ext)) return false;
@@ -2722,20 +2792,25 @@ function loadWaveforms() {
 
 function drawCanvasWave(box, peaks, progress) {
   let cv = box.querySelector('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const boxW = box.clientWidth || 160;
+  const boxH = box.clientHeight || 32;
   if (!cv) {
     cv = document.createElement('canvas');
-    const dpr = window.devicePixelRatio || 1;
-    cv.style.width = '160px'; cv.style.height = '32px';
-    cv.width = 160 * dpr; cv.height = 32 * dpr;
     box.prepend(cv);
   }
+  cv.style.width = boxW + 'px';
+  cv.style.height = boxH + 'px';
+  cv.width = boxW * dpr;
+  cv.height = boxH * dpr;
   renderWaveBars(cv, peaks, progress);
 }
 
 function renderWaveBars(cv, peaks, progress) {
   const dpr = window.devicePixelRatio || 1;
   const ctx = cv.getContext('2d');
-  const w = 160, h = 32;
+  const w = parseFloat(cv.style.width) || (cv.width / dpr) || 160;
+  const h = parseFloat(cv.style.height) || (cv.height / dpr) || 32;
   ctx.clearRect(0, 0, w * dpr, h * dpr);
   ctx.save(); ctx.scale(dpr, dpr);
 
@@ -2762,6 +2837,14 @@ async function playAudio(item, idx, lock = true) {
 
   const targetSrc = await resolveMediaUrl(item.path);
   if (token !== currentPlayToken) return;
+
+  if (!isLocalServerAlive && !studioDirHandle && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    if (lock) {
+      showToast('📁 Click "Studio Drive" in top bar to link E:\\Videos for instant 0ms playback on Vercel!', '💡');
+      openFolderModal();
+    }
+    return;
+  }
 
   if (currentAudioPath !== item.path) {
     currentAudioPath = item.path;
