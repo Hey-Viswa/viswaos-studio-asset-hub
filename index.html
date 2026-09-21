@@ -2732,6 +2732,9 @@ function makeGridCard(item, idx) {
       if (!audio.paused && lockedAudioIndex >= 0) return; // Don't interrupt actively locked track
       clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => {
+        // Double-check: if track was locked by click during the 40ms delay, don't override
+        if (lockedAudioIndex === idx) return;
+        if (!audio.paused && lockedAudioIndex >= 0) return;
         hoverAudioIndex = idx;
         card.classList.add('hover-preview');
         playAudio(item, idx, false);
@@ -2852,6 +2855,9 @@ function makeListRow(item, idx) {
       if (!audio.paused && lockedAudioIndex >= 0) return;
       clearTimeout(hoverTimer);
       hoverTimer = setTimeout(() => {
+        // Double-check: if track was locked by click during the 40ms delay, don't override
+        if (lockedAudioIndex === idx) return;
+        if (!audio.paused && lockedAudioIndex >= 0) return;
         hoverAudioIndex = idx;
         row.classList.add('hover-preview');
         playAudio(item, idx, false);
@@ -3128,24 +3134,35 @@ function toggleLockAudio(idx) {
     npBadge.textContent = 'PLAYING';
     npBadge.className = 'np-badge locked';
     if (audio.paused) {
-      audio.play().catch(e => {
+      audio.play().then(() => {
+        updateAudioStates();
+        startPlaybackLoop();
+      }).catch(e => {
         if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
       });
+    } else {
+      updateAudioStates();
     }
-    updateAudioStates();
     return;
   }
 
   // If already locked on this item, toggle pause/play
   if (lockedAudioIndex === idx) {
     if (audio.paused) {
-      audio.play().catch(e => {
+      npBadge.textContent = 'PLAYING';
+      npBadge.className = 'np-badge locked';
+      audio.play().then(() => {
+        updateAudioStates();
+        startPlaybackLoop();
+      }).catch(e => {
         if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
       });
     } else {
       audio.pause();
+      npBadge.textContent = 'PAUSED';
+      npBadge.className = 'np-badge preview';
+      updateAudioStates();
     }
-    updateAudioStates();
     return;
   }
 
@@ -3228,6 +3245,31 @@ function startPlaybackLoop() {
   })();
 }
 
+// Background playback: setInterval keeps UI state synced even when tab is hidden
+// (requestAnimationFrame pauses in background tabs, but audio keeps playing)
+let bgPlaybackInterval = null;
+function startBgPlaybackSync() {
+  if (bgPlaybackInterval) return;
+  bgPlaybackInterval = setInterval(() => {
+    if (audio.paused || (lockedAudioIndex < 0 && hoverAudioIndex < 0)) return;
+    if (document.hidden && !isDraggingSeek) {
+      // Keep internal state alive in background — UI updates happen on tab return
+      const dur = audio.duration || 1;
+      npTime.textContent = fmt(audio.currentTime);
+      npDur.textContent = fmt(dur);
+    }
+  }, 250);
+}
+startBgPlaybackSync();
+
+// Seamlessly resume visual loop when returning from background tab
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !audio.paused && (lockedAudioIndex >= 0 || hoverAudioIndex >= 0)) {
+    startPlaybackLoop();
+    updateAudioStates();
+  }
+});
+
 audio.addEventListener('ended', () => {
   if (!audio.loop) {
     clearAudioStates();
@@ -3248,12 +3290,24 @@ audio.addEventListener('pause', updateAudioStates);
 npPlay.onclick = () => {
   if (lockedAudioIndex < 0 && hoverAudioIndex >= 0) {
     lockedAudioIndex = hoverAudioIndex;
+    hoverAudioIndex = -1;
     npBadge.textContent = 'PLAYING';
     npBadge.className = 'np-badge locked';
   }
   if (lockedAudioIndex < 0) return;
-  audio.paused ? audio.play() : audio.pause();
-  updateAudioStates();
+  if (audio.paused) {
+    npBadge.textContent = 'PLAYING';
+    npBadge.className = 'np-badge locked';
+    audio.play().then(() => {
+      updateAudioStates();
+      startPlaybackLoop();
+    }).catch(() => {});
+  } else {
+    audio.pause();
+    npBadge.textContent = 'PAUSED';
+    npBadge.className = 'np-badge preview';
+    updateAudioStates();
+  }
 };
 
 // ── Interactive Draggable Seek Bar ────────────────────
@@ -3270,13 +3324,14 @@ npBarWrap.addEventListener('mousemove', e => {
 });
 
 npBarWrap.addEventListener('mousedown', e => {
-  if (!audio.duration) return;
+  if (!isFinite(audio.duration) || audio.duration <= 0) return;
   isDraggingSeek = true;
   npBarWrap.classList.add('dragging');
 
   // Promote preview to locked on seek
   if (lockedAudioIndex < 0 && hoverAudioIndex >= 0) {
     lockedAudioIndex = hoverAudioIndex;
+    hoverAudioIndex = -1;
     npBadge.textContent = 'PLAYING';
     npBadge.className = 'np-badge locked';
     updateAudioStates();
@@ -3289,7 +3344,7 @@ npBarWrap.addEventListener('mousedown', e => {
 });
 
 window.addEventListener('mousemove', e => {
-  if (!isDraggingSeek || !audio.duration) return;
+  if (!isDraggingSeek || !isFinite(audio.duration) || audio.duration <= 0) return;
   const ratio = computeSeekRatio(e.clientX);
   npFill.style.width = (ratio * 100) + '%';
   npKnob.style.left = (ratio * 100) + '%';
@@ -3301,7 +3356,7 @@ window.addEventListener('mouseup', e => {
   if (!isDraggingSeek) return;
   isDraggingSeek = false;
   npBarWrap.classList.remove('dragging');
-  if (audio.duration) {
+  if (isFinite(audio.duration) && audio.duration > 0) {
     const ratio = computeSeekRatio(e.clientX);
     audio.currentTime = ratio * audio.duration;
   }
