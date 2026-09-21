@@ -2626,6 +2626,56 @@ function renderAssets() {
 
   viewport.appendChild(container);
   if (viewMode === 'list') setTimeout(loadWaveforms, 40);
+  // Hydrate image thumbnails lazily via resolveMediaUrl
+  setTimeout(hydrateVisibleThumbnails, 60);
+}
+
+// ── Lazy Thumbnail Hydrator (IntersectionObserver) ────
+let thumbObserver = null;
+function hydrateVisibleThumbnails() {
+  // Disconnect previous observer
+  if (thumbObserver) thumbObserver.disconnect();
+
+  const thumbEls = viewport.querySelectorAll('[data-thumb-path]');
+  if (!thumbEls.length) return;
+
+  thumbObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const el = entry.target;
+      const path = el.dataset.thumbPath;
+      if (!path || el.dataset.thumbLoaded) return;
+      el.dataset.thumbLoaded = '1';
+
+      resolveMediaUrl(path).then(url => {
+        if (!url) return;
+        // Skip mixed content URLs on HTTPS deployment
+        if (url.includes('localhost:8765') && window.location.protocol === 'https:') return;
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.alt = '';
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'cover';
+        img.onload = () => {
+          // Remove placeholder icon
+          const placeholder = el.querySelector('.thumb-placeholder');
+          if (placeholder) placeholder.remove();
+          const badge = el.querySelector('.thumb-format-badge');
+          if (badge) badge.remove();
+          const existingPlaceholder = el.querySelector('span');
+          if (existingPlaceholder && existingPlaceholder.textContent.includes('🖼️')) existingPlaceholder.remove();
+        };
+        img.onerror = () => {}; // Keep placeholder on error
+        img.src = url;
+        el.prepend(img);
+      }).catch(() => {});
+
+      thumbObserver.unobserve(el);
+    });
+  }, { root: viewport, rootMargin: '200px', threshold: 0.01 });
+
+  thumbEls.forEach(el => thumbObserver.observe(el));
 }
 
 // ── Card: Grid Mode ──────────────────────────────────
@@ -2642,7 +2692,7 @@ function makeGridCard(item, idx) {
   let thumbHtml = '';
   if (isVideo) {
     thumbHtml = `
-      <div class="grid-thumb-wrap video-thumb" data-preview="${idx}" data-video-url="/api/media?p=${encPath}">
+      <div class="grid-thumb-wrap video-thumb" data-preview="${idx}" data-video-path="${escapeAttr(item.path)}">
         <div class="video-poster">
           <div class="video-poster-badge">${escapeHtml(ext)}</div>
           <div class="grid-play-icon"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="8,5 19,12 8,19"/></svg></div>
@@ -2669,8 +2719,9 @@ function makeGridCard(item, idx) {
     `;
   } else if (isImage) {
     thumbHtml = `
-      <div class="grid-thumb-wrap" data-preview="${idx}">
-        <img src="/api/media?p=${encPath}" loading="lazy" alt="">
+      <div class="grid-thumb-wrap" data-preview="${idx}" data-thumb-path="${escapeAttr(item.path)}">
+        <span class="thumb-placeholder" style="font-size:28px;color:var(--fg-dim);opacity:0.5">🖼️</span>
+        <span class="thumb-format-badge" style="position:absolute;top:6px;left:6px;font-family:var(--mono);font-size:9px;font-weight:700;background:var(--surface);color:var(--fg);padding:2px 5px;border-radius:3px;border:1px solid var(--border)">${escapeHtml(ext)}</span>
       </div>
     `;
   } else if (item.type === 'AUDIO') {
@@ -2794,9 +2845,10 @@ function makeListRow(item, idx) {
       </div>
     `;
   } else if (isImage) {
+    const ext = (item.name.split('.').pop() || 'IMG').toUpperCase();
     leftElement = `
-      <div class="media-preview-box" data-preview="${idx}" title="Expand Image">
-        <img src="/api/media?p=${encPath}" loading="lazy" alt="">
+      <div class="media-preview-box" data-preview="${idx}" data-thumb-path="${escapeAttr(item.path)}" title="Expand Image">
+        <span style="font-size:14px;color:var(--fg-dim);opacity:0.5">🖼️</span>
       </div>
     `;
   } else {
@@ -3448,22 +3500,26 @@ let activeHoverVideo = null;
 viewport.addEventListener('mouseover', e => {
   const thumb = e.target.closest('.video-thumb');
   if (!thumb) return;
-  const url = thumb.dataset.videoUrl;
-  if (!url || thumb.querySelector('video')) return;
+  const videoPath = thumb.dataset.videoPath;
+  if (!videoPath || thumb.querySelector('video')) return;
 
   clearTimeout(videoHoverTimer);
-  videoHoverTimer = setTimeout(() => {
+  videoHoverTimer = setTimeout(async () => {
     cleanupHoverVideo();
-    const vid = document.createElement('video');
-    vid.className = 'hover-video-active';
-    vid.src = url + '#t=0.1';
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.loop = true;
-    vid.autoplay = true;
-    thumb.appendChild(vid);
-    activeHoverVideo = vid;
-    vid.play().catch(() => {});
+    try {
+      const url = await resolveMediaUrl(videoPath);
+      if (!url || url.includes('localhost:8765') && window.location.protocol === 'https:') return;
+      const vid = document.createElement('video');
+      vid.className = 'hover-video-active';
+      vid.src = url + '#t=0.1';
+      vid.muted = true;
+      vid.playsInline = true;
+      vid.loop = true;
+      vid.autoplay = true;
+      thumb.appendChild(vid);
+      activeHoverVideo = vid;
+      vid.play().catch(() => {});
+    } catch (err) {}
   }, 110);
 });
 
@@ -3983,10 +4039,15 @@ function setupVideoSimulation() {
   if (!simVideo) {
     simVideo = document.createElement('video');
     simVideo.crossOrigin = 'anonymous';
-    simVideo.src = '/api/media?p=' + encodeURIComponent(LOG_VIDEO_PATH);
     simVideo.loop = true;
     simVideo.muted = true;
     simVideo.playsInline = true;
+    // Resolve video URL dynamically (works on both localhost and deployment)
+    resolveMediaUrl(LOG_VIDEO_PATH).then(url => {
+      if (url && !(url.includes('localhost:8765') && window.location.protocol === 'https:')) {
+        simVideo.src = url;
+      }
+    });
   }
 
   const W = 640;
