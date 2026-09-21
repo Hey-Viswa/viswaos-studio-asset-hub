@@ -1612,7 +1612,7 @@ function showFolderConnectModal(item = null, idx = -1, lock = true) {
   if (folderModal) folderModal.classList.add('open');
 }
 
-if (btnConnectFolder) btnConnectFolder.onclick = () => showFolderConnectModal();
+if (btnConnectFolder) btnConnectFolder.onclick = () => connectStudioFolder();
 if (folderModalClose) folderModalClose.onclick = () => folderModal.classList.remove('open');
 if (folderModalCancel) folderModalCancel.onclick = () => folderModal.classList.remove('open');
 if (folderModalChoose) folderModalChoose.onclick = connectStudioFolder;
@@ -1922,11 +1922,15 @@ if (btnTheme) {
 applyTheme(currentTheme);
 
 
-  // Test if local server is alive (relative check + cross-origin localhost for Vercel)
+  // Test if local server is alive (relative check + fast 500ms timeout for cross-origin on Vercel)
+  const isRemoteHost = (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1');
   try {
     let vRes = await fetch('/api/version').catch(() => null);
-    if (!vRes || !vRes.ok) {
-      vRes = await fetch('http://localhost:8765/api/version').catch(() => null);
+    if ((!vRes || !vRes.ok) && !isRemoteHost) {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 600);
+      vRes = await fetch('http://localhost:8765/api/version', { signal: ctrl.signal }).catch(() => null);
+      clearTimeout(tid);
     }
     isLocalServerAlive = !!(vRes && vRes.ok);
   } catch(e) {
@@ -1953,7 +1957,7 @@ applyTheme(currentTheme);
     } else {
       updateFolderStatus(false);
       // If deployed on Vercel and no local server, guide user to connect studio folder
-      if (!isLocalServerAlive && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      if (!isLocalServerAlive && isRemoteHost) {
         setTimeout(() => {
           showToast('☁️ Running on Web: Click "📁 Studio Drive" in top bar to connect your E:\\Videos folder!', '💡');
         }, 1500);
@@ -1978,7 +1982,7 @@ applyTheme(currentTheme);
 
   try {
     let resIndex = null;
-    if (isLocalServerAlive) {
+    if (isLocalServerAlive && !isRemoteHost) {
       resIndex = await fetch('/api/index').catch(() => null);
     }
     const cacheBuster = '?v=20260921_' + Math.floor(Date.now() / 60000);
@@ -3098,7 +3102,9 @@ if (npTimelineExport) {
 function stopAudio() {
   currentPlayToken++;
   if (pendingPlayPromise) {
-    try { await pendingPlayPromise; } catch(e) {}
+    pendingPlayPromise.then(() => {
+      try { audio.pause(); } catch(e) {}
+    }).catch(() => {});
   }
   try { audio.pause(); } catch(e) {}
   try { audio.currentTime = 0; } catch(e) {}
