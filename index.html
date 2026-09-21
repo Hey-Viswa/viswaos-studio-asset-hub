@@ -1221,6 +1221,8 @@ let studioDirHandle = null;
 const blobUrlCache = new Map();
 let currentAudioPath = '';
 let pendingPlayItem = null;
+let currentPlayToken = 0;
+let pendingPlayPromise = null;
 
 // New Buttons & Folder Modal Selectors
 const btnHoverToggle = document.getElementById('btnHoverToggle');
@@ -1346,7 +1348,28 @@ async function connectStudioFolder() {
     return;
   }
   try {
-    const handle = await window.showDirectoryPicker({
+    let handle = studioDirHandle;
+    // If handle already saved from IndexedDB, try 1-click permission request
+    if (handle) {
+      try {
+        const req = await handle.requestPermission({ mode: 'read' });
+        if (req === 'granted') {
+          await saveDirHandle(handle);
+          updateFolderStatus(true, handle.name);
+          if (folderModal) folderModal.classList.remove('open');
+          showToast(`🟢 Reconnected: "${handle.name}"! Direct local disk playback & 4K grading active.`, '✅');
+          if (pendingPlayItem) {
+            const p = pendingPlayItem;
+            pendingPlayItem = null;
+            playAudio(p.item, p.idx, p.lock);
+          }
+          return;
+        }
+      } catch(e) {}
+    }
+
+    // Prompt user to pick studio folder
+    handle = await window.showDirectoryPicker({
       id: 'viswaos_studio_videos',
       mode: 'read'
     });
@@ -1355,7 +1378,7 @@ async function connectStudioFolder() {
       await saveDirHandle(handle);
       updateFolderStatus(true, handle.name);
       if (folderModal) folderModal.classList.remove('open');
-      showToast(`🟢 Connected: "${handle.name}"! Direct local disk playback & 4K grading enabled.`, '✅');
+      showToast(`🟢 Connected: "${handle.name}"! Direct local disk playback & 4K grading active.`, '✅');
       if (pendingPlayItem) {
         const p = pendingPlayItem;
         pendingPlayItem = null;
@@ -1395,18 +1418,28 @@ if (btnHoverToggle) {
 async function resolvePathToBlobUrl(dirHandle, fullPath) {
   if (!dirHandle || !fullPath) return null;
   let norm = fullPath.replace(/\\/g, '/');
-  const rootName = dirHandle.name.toLowerCase();
+  const rootName = (dirHandle.name || '').toLowerCase();
 
-  const marker = '/' + rootName + '/';
-  const mIdx = norm.toLowerCase().indexOf(marker);
-  if (mIdx >= 0) {
-    norm = norm.substring(mIdx + marker.length);
-  } else {
-    norm = norm.replace(/^[a-zA-Z]:\/?/, '').replace(/^\/+/, '');
-    const firstPart = norm.split('/')[0];
-    if (firstPart && firstPart.toLowerCase() === rootName) {
-      norm = norm.substring(firstPart.length + 1);
+  // Strip Windows drive letter (e.g. "E:/Videos/..." -> "/Videos/...")
+  norm = norm.replace(/^[a-zA-Z]:/, '');
+  if (!norm.startsWith('/')) norm = '/' + norm;
+
+  if (rootName) {
+    const marker = '/' + rootName + '/';
+    const mIdx = norm.toLowerCase().indexOf(marker);
+    if (mIdx >= 0) {
+      norm = norm.substring(mIdx + marker.length);
+    } else {
+      const clean = norm.replace(/^\/+/, '');
+      const segments = clean.split('/');
+      if (segments[0] && segments[0].toLowerCase() === rootName) {
+        norm = segments.slice(1).join('/');
+      } else {
+        norm = clean;
+      }
     }
+  } else {
+    norm = norm.replace(/^\/+/, '');
   }
 
   const parts = norm.split('/').filter(Boolean);
@@ -1419,12 +1452,14 @@ async function resolvePathToBlobUrl(dirHandle, fullPath) {
       curr = await curr.getDirectoryHandle(partName);
     } catch (e) {
       let found = null;
-      for await (const [name, entry] of curr.entries()) {
-        if (entry.kind === 'directory' && name.toLowerCase() === partName.toLowerCase()) {
-          found = entry;
-          break;
+      try {
+        for await (const [name, entry] of curr.entries()) {
+          if (entry.kind === 'directory' && name.toLowerCase() === partName.toLowerCase()) {
+            found = entry;
+            break;
+          }
         }
-      }
+      } catch (err) { return null; }
       if (found) {
         curr = found;
       } else {
@@ -1438,12 +1473,14 @@ async function resolvePathToBlobUrl(dirHandle, fullPath) {
   try {
     fileHandle = await curr.getFileHandle(fileName);
   } catch (e) {
-    for await (const [name, entry] of curr.entries()) {
-      if (entry.kind === 'file' && name.toLowerCase() === fileName.toLowerCase()) {
-        fileHandle = entry;
-        break;
+    try {
+      for await (const [name, entry] of curr.entries()) {
+        if (entry.kind === 'file' && name.toLowerCase() === fileName.toLowerCase()) {
+          fileHandle = entry;
+          break;
+        }
       }
-    }
+    } catch (err) { return null; }
   }
 
   if (!fileHandle) return null;
@@ -1483,6 +1520,7 @@ function saveState() {
       curSection, curCreator, curTag,
       curMusicStem, curMusicKey, curMusicInst, curMusicVibe, curSfxCat,
       curBpmRange, curMicroFoley, currentSort,
+      hoverAuditionEnabled,
       searchQuery: searchBox.value,
       currentPage, viewMode,
       volume: audio.volume,
@@ -1509,6 +1547,16 @@ function restoreState() {
     curBpmRange = s.curBpmRange || '';
     curMicroFoley = s.curMicroFoley || '';
     currentSort = s.currentSort || 'name-asc';
+    if (s.hoverAuditionEnabled !== undefined) {
+      hoverAuditionEnabled = !!s.hoverAuditionEnabled;
+      if (hoverStateText) {
+        hoverStateText.textContent = hoverAuditionEnabled ? 'ON' : 'OFF';
+        hoverStateText.style.color = hoverAuditionEnabled ? '#22c55e' : '#9ca3af';
+      }
+      if (btnHoverToggle) {
+        btnHoverToggle.classList.toggle('hover-off', !hoverAuditionEnabled);
+      }
+    }
     if (s.searchQuery) {
       searchQuery = s.searchQuery;
       searchBox.value = searchQuery;
@@ -1601,14 +1649,25 @@ if (btnOnlyFullMix) {
   try {
     const savedHandle = await loadDirHandle();
     if (savedHandle) {
-      studioDirHandle = savedHandle;
-      updateFolderStatus(true, savedHandle.name);
+      let isPermitted = false;
+      try {
+        const perm = await savedHandle.queryPermission({ mode: 'read' });
+        isPermitted = (perm === 'granted');
+      } catch(e) {}
+
+      if (isPermitted) {
+        studioDirHandle = savedHandle;
+        updateFolderStatus(true, savedHandle.name);
+      } else {
+        studioDirHandle = savedHandle;
+        updateFolderStatus(false, savedHandle.name);
+      }
     } else {
       updateFolderStatus(false);
       // If deployed on Vercel and no local server, guide user to connect studio folder
       if (!isLocalServerAlive && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         setTimeout(() => {
-          showToast('☁️ Running on Web: Click "📁 Studio Drive" in top bar to connect your E:\Videos folder!', '💡');
+          showToast('☁️ Running on Web: Click "📁 Studio Drive" in top bar to connect your E:\\Videos folder!', '💡');
         }, 1500);
       }
     }
@@ -1621,14 +1680,31 @@ if (btnOnlyFullMix) {
   updateFullMixBtn();
 
   try {
-    let resIndex = await fetch('/api/index').catch(() => null);
+    let resIndex = null;
+    if (isLocalServerAlive) {
+      resIndex = await fetch('/api/index').catch(() => null);
+    }
     if (!resIndex || !resIndex.ok) {
       resIndex = await fetch('./vault_data.json').catch(() => null);
     }
-    let resDocs = await fetch('/api/docs').catch(() => null);
+    if (!resIndex || !resIndex.ok) {
+      resIndex = await fetch('/vault_data.json').catch(() => null);
+    }
+    if (!resIndex || !resIndex.ok) {
+      throw new Error('Could not reach Vault Server or load vault_data.json');
+    }
+
+    let resDocs = null;
+    if (isLocalServerAlive) {
+      resDocs = await fetch('/api/docs').catch(() => null);
+    }
     if (!resDocs || !resDocs.ok) {
       resDocs = await fetch('./docs_data.json').catch(() => null);
     }
+    if (!resDocs || !resDocs.ok) {
+      resDocs = await fetch('/docs_data.json').catch(() => null);
+    }
+
     RAW_DATA = await resIndex.json();
     if (resDocs && resDocs.ok) {
       try { ALL_DOCS = await resDocs.json(); } catch(e) { ALL_DOCS = []; }
@@ -1647,7 +1723,8 @@ if (btnOnlyFullMix) {
     renderFilterBoard();
     applyFilters();
   } catch (err) {
-    viewport.innerHTML = `<div class="empty-state"><h3>Cannot connect to Vault Server</h3><p>Ensure sfx_server.py is running on localhost:8765</p></div>`;
+    console.error('Catalog load failure:', err);
+    viewport.innerHTML = `<div class="empty-state"><h3>Cannot Load Asset Catalog</h3><p>${escapeHtml(err.message)}</p><p style="margin-top:8px;font-size:11px;color:var(--fg-dim)">If running locally, start sfx_server.py. If on Vercel, ensure vault_data.json is deployed.</p></div>`;
   }
 })();
 
@@ -2207,7 +2284,7 @@ function makeGridCard(item, idx) {
         hoverAudioIndex = idx;
         card.classList.add('hover-preview');
         playAudio(item, idx, false);
-      }, 70);
+      }, 40);
     });
 
     card.addEventListener('mouseleave', () => {
@@ -2215,6 +2292,11 @@ function makeGridCard(item, idx) {
       card.classList.remove('hover-preview');
       // If this card is currently locked and playing, NEVER stop!
       if (lockedAudioIndex === idx) return;
+
+      // One-Shot SFX Latch Mode: For SFX & Micro-Foley, let short transients play to completion!
+      const isOneShot = (item.section === 'Sound Design & SFX') || (item.cat && item.cat !== 'MUSIC');
+      if (isOneShot) return;
+
       if (hoverAudioIndex === idx) {
         stopAudio();
         hoverAudioIndex = -1;
@@ -2326,13 +2408,18 @@ function makeListRow(item, idx) {
         hoverAudioIndex = idx;
         row.classList.add('hover-preview');
         playAudio(item, idx, false);
-      }, 70);
+      }, 40);
     });
 
     row.addEventListener('mouseleave', () => {
       clearTimeout(hoverTimer);
       row.classList.remove('hover-preview');
       if (lockedAudioIndex === idx) return;
+
+      // One-Shot SFX Latch Mode: For SFX & Micro-Foley, let short transients play to completion!
+      const isOneShot = (item.section === 'Sound Design & SFX') || (item.cat && item.cat !== 'MUSIC');
+      if (isOneShot) return;
+
       if (hoverAudioIndex === idx) {
         stopAudio();
         hoverAudioIndex = -1;
@@ -2396,20 +2483,19 @@ function renderWaveBars(cv, peaks, progress) {
 // ── Universal Audio Engine (Dual-Mode Local Server & File System API) ──
 async function playAudio(item, idx, lock = true) {
   if (!item || item.type !== 'AUDIO') return;
+  const token = ++currentPlayToken;
+
   const targetSrc = await resolveMediaUrl(item.path);
+  if (token !== currentPlayToken) return;
 
   if (currentAudioPath !== item.path) {
     currentAudioPath = item.path;
+    if (pendingPlayPromise) {
+      try { await pendingPlayPromise; } catch(e) {}
+    }
+    if (token !== currentPlayToken) return;
     audio.src = targetSrc;
   }
-
-  audio.play().catch(e => {
-    if (e.name === 'NotAllowedError') {
-      showToast('Click anywhere in the page to enable audio playback', 'ℹ️');
-    } else if (!isLocalServerAlive && !studioDirHandle) {
-      showFolderConnectModal(item, idx, lock);
-    }
-  });
 
   npBar.classList.add('visible');
   npName.textContent = item.name;
@@ -2427,15 +2513,31 @@ async function playAudio(item, idx, lock = true) {
     npBadge.className = 'np-badge preview';
   }
 
+  try {
+    pendingPlayPromise = audio.play();
+    await pendingPlayPromise;
+  } catch (e) {
+    if (token !== currentPlayToken) return;
+    if (e.name === 'NotAllowedError') {
+      showToast('Click anywhere in the page to enable audio playback', 'ℹ️');
+    } else if (e.name !== 'AbortError' && !isLocalServerAlive && !studioDirHandle) {
+      showFolderConnectModal(item, idx, lock);
+    }
+  } finally {
+    if (token === currentPlayToken) pendingPlayPromise = null;
+  }
+
   startPlaybackLoop();
 }
 
 async function pinpointPlay(item, idx, ratio) {
+  const token = ++currentPlayToken;
   lockedAudioIndex = idx;
   hoverAudioIndex = -1;
   updateAudioStates();
 
   const targetSrc = await resolveMediaUrl(item.path);
+  if (token !== currentPlayToken) return;
 
   npBar.classList.add('visible');
   npBadge.textContent = 'PLAYING';
@@ -2446,31 +2548,47 @@ async function pinpointPlay(item, idx, ratio) {
 
   if (currentAudioPath === item.path && !isNaN(audio.duration) && audio.duration > 0) {
     audio.currentTime = Math.max(0, Math.min(ratio * audio.duration, audio.duration - 0.05));
-    audio.play().catch(() => {});
+    try {
+      pendingPlayPromise = audio.play();
+      await pendingPlayPromise;
+    } catch(e) {}
   } else {
     currentAudioPath = item.path;
+    if (pendingPlayPromise) {
+      try { await pendingPlayPromise; } catch(e) {}
+    }
+    if (token !== currentPlayToken) return;
     audio.src = targetSrc;
     const onMeta = () => {
       audio.removeEventListener('loadedmetadata', onMeta);
       if (!isNaN(audio.duration) && audio.duration > 0) {
         audio.currentTime = Math.max(0, Math.min(ratio * audio.duration, audio.duration - 0.05));
       }
-      audio.play().catch(() => {});
     };
     audio.addEventListener('loadedmetadata', onMeta);
-    audio.play().catch(e => {
-      if (!isLocalServerAlive && !studioDirHandle) showFolderConnectModal(item, idx, true);
-    });
+    try {
+      pendingPlayPromise = audio.play();
+      await pendingPlayPromise;
+    } catch(e) {
+      if (token !== currentPlayToken) return;
+      if (e.name !== 'AbortError' && !isLocalServerAlive && !studioDirHandle) {
+        showFolderConnectModal(item, idx, true);
+      }
+    } finally {
+      if (token === currentPlayToken) pendingPlayPromise = null;
+    }
   }
 
   startPlaybackLoop();
 }
 
-function stopAudio() {
-  if (!audio.paused) {
-    try { audio.pause(); } catch(e) {}
+async function stopAudio() {
+  currentPlayToken++;
+  if (pendingPlayPromise) {
+    try { await pendingPlayPromise; } catch(e) {}
   }
-  audio.currentTime = 0;
+  try { audio.pause(); } catch(e) {}
+  try { audio.currentTime = 0; } catch(e) {}
   cancelAnimationFrame(animFrame);
   npFill.style.width = '0%';
   npKnob.style.left = '0%';
@@ -2955,6 +3073,9 @@ let isKeyHoldingBefore = false;
 let frameImageCache = {};
 
 function parseCubeLUT(text) {
+  if (!text || typeof text !== 'string') {
+    return createIdentityLUT(17);
+  }
   const lines = text.split(/\r?\n/);
   let size = 0;
   let is3D = true;
@@ -2990,19 +3111,54 @@ function parseCubeLUT(text) {
       }
     }
   }
-  return { size: size || 33, is3D, data: new Float32Array(table) };
+
+  // Fallback if cube file had no valid numeric data (e.g. corrupt file or HTML 404 response)
+  if (table.length < 24) {
+    return createIdentityLUT(17);
+  }
+
+  return { size: size || Math.round(Math.cbrt(table.length / 3)) || 33, is3D, data: new Float32Array(table) };
+}
+
+function createIdentityLUT(size = 17) {
+  const table = [];
+  const max = size - 1;
+  for (let b = 0; b < size; b++) {
+    for (let g = 0; g < size; g++) {
+      for (let r = 0; r < size; r++) {
+        table.push(r / max, g / max, b / max);
+      }
+    }
+  }
+  return { size, is3D: true, data: new Float32Array(table), isIdentity: true };
 }
 
 function apply3DLut(srcImageData, dstImageData, lutObj, intensity = 1.0) {
-  const { size, data: lut } = lutObj;
+  if (!srcImageData || !dstImageData) return;
   const src = srcImageData.data;
   const dst = dstImageData.data;
   const len = src.length;
+
+  if (!lutObj || !lutObj.data || lutObj.data.length < 24) {
+    // If no valid LUT data, pass-through original image untouched (NEVER pitch black!)
+    dst.set(src);
+    return;
+  }
+
+  const { size, data: lut } = lutObj;
   const maxIdx = size - 1;
   const sizeSq = size * size;
   const scale = maxIdx / 255;
-  const blend = intensity;
+  const blend = Math.max(0, Math.min(intensity, 1));
   const invBlend = 1.0 - blend;
+  const lutLen = lut.length;
+
+  // Safe accessor to guarantee NO undefined or NaN values ever propagate
+  const sample = (idx, fallback) => {
+    if (idx < 0 || idx >= lutLen) return fallback;
+    const v = lut[idx];
+    return (v !== undefined && !isNaN(v)) ? v : fallback;
+  };
 
   for (let i = 0; i < len; i += 4) {
     const rOrig = src[i];
@@ -3034,31 +3190,37 @@ function apply3DLut(srcImageData, dstImageData, lutObj, intensity = 1.0) {
     const idx111 = (r1 + g1 * size + b1 * sizeSq) * 3;
 
     // Red
-    const r_c00 = lut[idx000] * (1 - dr) + lut[idx100] * dr;
-    const r_c10 = lut[idx010] * (1 - dr) + lut[idx110] * dr;
-    const r_c01 = lut[idx001] * (1 - dr) + lut[idx101] * dr;
-    const r_c11 = lut[idx011] * (1 - dr) + lut[idx111] * dr;
+    const defR = rOrig / 255;
+    const r_c00 = sample(idx000, defR) * (1 - dr) + sample(idx100, defR) * dr;
+    const r_c10 = sample(idx010, defR) * (1 - dr) + sample(idx110, defR) * dr;
+    const r_c01 = sample(idx001, defR) * (1 - dr) + sample(idx101, defR) * dr;
+    const r_c11 = sample(idx011, defR) * (1 - dr) + sample(idx111, defR) * dr;
     const r_c0 = r_c00 * (1 - dg) + r_c10 * dg;
     const r_c1 = r_c01 * (1 - dg) + r_c11 * dg;
-    const rGraded = (r_c0 * (1 - db) + r_c1 * db) * 255;
+    let rGraded = (r_c0 * (1 - db) + r_c1 * db) * 255;
+    if (isNaN(rGraded)) rGraded = rOrig;
 
     // Green
-    const g_c00 = lut[idx000 + 1] * (1 - dr) + lut[idx100 + 1] * dr;
-    const g_c10 = lut[idx010 + 1] * (1 - dr) + lut[idx110 + 1] * dr;
-    const g_c01 = lut[idx001 + 1] * (1 - dr) + lut[idx101 + 1] * dr;
-    const g_c11 = lut[idx011 + 1] * (1 - dr) + lut[idx111 + 1] * dr;
+    const defG = gOrig / 255;
+    const g_c00 = sample(idx000 + 1, defG) * (1 - dr) + sample(idx100 + 1, defG) * dr;
+    const g_c10 = sample(idx010 + 1, defG) * (1 - dr) + sample(idx110 + 1, defG) * dr;
+    const g_c01 = sample(idx001 + 1, defG) * (1 - dr) + sample(idx101 + 1, defG) * dr;
+    const g_c11 = sample(idx011 + 1, defG) * (1 - dr) + sample(idx111 + 1, defG) * dr;
     const g_c0 = g_c00 * (1 - dg) + g_c10 * dg;
     const g_c1 = g_c01 * (1 - dg) + g_c11 * dg;
-    const gGraded = (g_c0 * (1 - db) + g_c1 * db) * 255;
+    let gGraded = (g_c0 * (1 - db) + g_c1 * db) * 255;
+    if (isNaN(gGraded)) gGraded = gOrig;
 
     // Blue
-    const b_c00 = lut[idx000 + 2] * (1 - dr) + lut[idx100 + 2] * dr;
-    const b_c10 = lut[idx010 + 2] * (1 - dr) + lut[idx110 + 2] * dr;
-    const b_c01 = lut[idx001 + 2] * (1 - dr) + lut[idx101 + 2] * dr;
-    const b_c11 = lut[idx011 + 2] * (1 - dr) + lut[idx111 + 2] * dr;
+    const defB = bOrig / 255;
+    const b_c00 = sample(idx000 + 2, defB) * (1 - dr) + sample(idx100 + 2, defB) * dr;
+    const b_c10 = sample(idx010 + 2, defB) * (1 - dr) + sample(idx110 + 2, defB) * dr;
+    const b_c01 = sample(idx001 + 2, defB) * (1 - dr) + sample(idx101 + 2, defB) * dr;
+    const b_c11 = sample(idx011 + 2, defB) * (1 - dr) + sample(idx111 + 2, defB) * dr;
     const b_c0 = b_c00 * (1 - dg) + b_c10 * dg;
     const b_c1 = b_c01 * (1 - dg) + b_c11 * dg;
-    const bGraded = (b_c0 * (1 - db) + b_c1 * db) * 255;
+    let bGraded = (b_c0 * (1 - db) + b_c1 * db) * 255;
+    if (isNaN(bGraded)) bGraded = bOrig;
 
     if (blend >= 0.999) {
       dst[i] = rGraded < 0 ? 0 : (rGraded > 255 ? 255 : rGraded | 0);
@@ -3190,13 +3352,25 @@ async function runLutSimulation() {
   try {
     // 1. Fetch .cube LUT file if not already parsed
     if (!currentLutObj || currentLutObj.itemPath !== activeLutItem.path) {
-      const res = await fetch('/api/media?p=' + encodeURIComponent(activeLutItem.path));
-      const cubeText = await res.text();
+      let cubeText = '';
+      try {
+        const cubeUrl = await resolveMediaUrl(activeLutItem.path);
+        const res = await fetch(cubeUrl);
+        if (res.ok) {
+          cubeText = await res.text();
+        }
+      } catch (err) {
+        console.warn('Could not fetch LUT text:', err);
+      }
       currentLutObj = parseCubeLUT(cubeText);
       currentLutObj.itemPath = activeLutItem.path;
       const meta = document.getElementById('lutMetaSpecs');
       if (meta) {
-        meta.textContent = `3D CUBE (${currentLutObj.size}×${currentLutObj.size}×${currentLutObj.size}) • ${(currentLutObj.size**3).toLocaleString()} Points`;
+        if (currentLutObj.isIdentity) {
+          meta.textContent = '3D CUBE (Reference Test Mode)';
+        } else {
+          meta.textContent = `3D CUBE (${currentLutObj.size}×${currentLutObj.size}×${currentLutObj.size}) • ${(currentLutObj.size**3).toLocaleString()} Points`;
+        }
       }
     }
 
@@ -3300,7 +3474,6 @@ function setupVideoSimulation() {
       if (btnPlay) btnPlay.textContent = '❚❚';
       simVideoAnim = requestAnimationFrame(renderVideoFrame);
     }).catch(() => {
-      // Autoplay blocked: render current frame paused
       renderVideoFrame();
     });
   };
@@ -3314,7 +3487,7 @@ function setupVideoSimulation() {
 }
 
 function loadActiveSimImage() {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     if (customFrameDataUrl) {
       const img = new Image();
       img.onload = () => resolve(img);
@@ -3329,49 +3502,89 @@ function loadActiveSimImage() {
       return;
     }
 
-    const img = new Image();
-    img.onload = () => {
-      frameImageCache[frame.path] = img;
-      resolve(img);
-    };
-    img.onerror = () => {
-      console.warn('Could not load test frame:', frame.path);
+    try {
+      const targetUrl = await resolveMediaUrl(frame.path);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        frameImageCache[frame.path] = img;
+        resolve(img);
+      };
+      img.onerror = () => {
+        console.warn('Could not load test frame:', frame.path);
+        resolve(createFallbackTestPattern());
+      };
+      img.src = targetUrl;
+    } catch (e) {
       resolve(createFallbackTestPattern());
-    };
-    img.src = '/api/media?p=' + encodeURIComponent(frame.path);
+    }
   });
 }
 
 function createFallbackTestPattern() {
   const c = document.createElement('canvas');
-  c.width = 640; c.height = 360;
+  c.width = 720; c.height = 405;
   const ctx = c.getContext('2d');
-  // Gradient sky and landscape pattern
-  const grad = ctx.createLinearGradient(0, 0, 0, 360);
-  grad.addColorStop(0, '#5b7c99');
-  grad.addColorStop(0.5, '#c59b6d');
-  grad.addColorStop(1, '#3b4d28');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 640, 360);
 
-  // Color checker bars
-  const colors = ['#b8826b', '#cfa788', '#2b4d6b', '#5c8041', '#e0c952', '#a83c3c'];
-  colors.forEach((col, i) => {
+  // Cinematic sky gradient (highlights to midtones)
+  const sky = ctx.createLinearGradient(0, 0, 0, 240);
+  sky.addColorStop(0, '#5a7894');
+  sky.addColorStop(0.4, '#a28876');
+  sky.addColorStop(0.7, '#d49b6a');
+  sky.addColorStop(1, '#b86d48');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 720, 240);
+
+  // Landscape / Foreground (shadows and texture)
+  const ground = ctx.createLinearGradient(0, 240, 0, 405);
+  ground.addColorStop(0, '#2e3a24');
+  ground.addColorStop(0.5, '#1e2417');
+  ground.addColorStop(1, '#11140e');
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 240, 720, 165);
+
+  // Color Checker Swatches (Skin Tones, Primaries, Neutrals)
+  const swatches = [
+    '#b8826b', '#cda282', '#dfb99b', '#8a4b38',
+    '#38638b', '#4f7d45', '#a83c3c', '#2c5e9e',
+    '#d4b73b', '#7a4282', '#e8e8e8', '#7f7f7f', '#1c1c1c'
+  ];
+  const barW = Math.floor(720 / swatches.length);
+  swatches.forEach((col, i) => {
     ctx.fillStyle = col;
-    ctx.fillRect(i * 106, 260, 106, 100);
+    ctx.fillRect(i * barW, 320, barW, 85);
   });
+
+  // Stamp header label
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = '600 12px monospace';
+  ctx.fillText('VISWAOS 3D LUT SIMULATOR • CINEMA DYNAMIC RANGE REFERENCE CHART', 16, 28);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = '10px monospace';
+  ctx.fillText('Rec.709 Standard Tone Curve & Color Gamut Verification', 16, 44);
+
   return c;
 }
 
 function setLutSplit(ratio) {
   lutSplitRatio = Math.max(0, Math.min(ratio, 1));
   const container = document.getElementById('lutCanvasContainer');
+  const splitBar = document.getElementById('lutSplitBar');
   if (container) {
     container.style.setProperty('--split-pos', (lutSplitRatio * 100).toFixed(2) + '%');
   }
+  if (splitBar) {
+    splitBar.style.display = (lutSplitRatio <= 0.005 || lutSplitRatio >= 0.995) ? 'none' : 'block';
+  }
   const tip = document.getElementById('lutSplitTip');
   if (tip) {
-    tip.textContent = `${Math.round(lutSplitRatio * 100)}% ORIGINAL / ${Math.round((1 - lutSplitRatio) * 100)}% GRADED`;
+    if (lutSplitRatio <= 0.005) {
+      tip.textContent = '100% GRADED (FULL VIEW)';
+    } else if (lutSplitRatio >= 0.995) {
+      tip.textContent = '100% ORIGINAL / RAW (FULL VIEW)';
+    } else {
+      tip.textContent = `${Math.round(lutSplitRatio * 100)}% ORIGINAL / ${Math.round((1 - lutSplitRatio) * 100)}% GRADED`;
+    }
   }
 }
 
@@ -3398,12 +3611,18 @@ function bindLutSimulatorEvents() {
   }
 
   if (stage) {
-    stage.onmousedown = e => {
-      // Don't drag split if clicking transport buttons
+    stage.onpointerdown = e => {
       if (e.target.closest('#lutVideoTransport')) return;
       isDraggingSplit = true;
+      try { stage.setPointerCapture(e.pointerId); } catch(err) {}
       onPointerMove(e);
     };
+    stage.onpointermove = onPointerMove;
+    stage.onpointerup = e => {
+      isDraggingSplit = false;
+      try { stage.releasePointerCapture(e.pointerId); } catch(err) {}
+    };
+    stage.onpointercancel = () => { isDraggingSplit = false; };
     stage.ondragover = e => e.preventDefault();
     stage.ondrop = e => {
       e.preventDefault();
@@ -3413,8 +3632,7 @@ function bindLutSimulatorEvents() {
     };
   }
 
-  window.addEventListener('mousemove', onPointerMove);
-  window.addEventListener('mouseup', () => { isDraggingSplit = false; });
+  window.addEventListener('pointerup', () => { isDraggingSplit = false; });
 
   document.querySelectorAll('.lut-frame-btn[data-frame-idx]').forEach(btn => {
     btn.onclick = async () => {
@@ -3508,9 +3726,12 @@ function bindLutSimulatorEvents() {
 
   if (btnToggleSplit) {
     btnToggleSplit.onclick = () => {
-      if (lutSplitRatio > 0.05) {
+      if (Math.abs(lutSplitRatio - 0.5) < 0.1) {
         setLutSplit(0.0);
-        btnToggleSplit.textContent = '◂|▸ Full';
+        btnToggleSplit.textContent = 'Full Graded';
+      } else if (lutSplitRatio <= 0.05) {
+        setLutSplit(1.0);
+        btnToggleSplit.textContent = 'Full Original';
       } else {
         setLutSplit(0.50);
         btnToggleSplit.textContent = '◂|▸ Split';
@@ -3553,7 +3774,7 @@ function bindLutSimulatorEvents() {
 }
 
 // ── Cinema Lightbox Modal ────────────────────────────
-function openPreview(idx) {
+async function openPreview(idx) {
   const item = FILTERED[idx];
   if (!item) return;
   modalActiveItem = item;
@@ -3567,12 +3788,12 @@ function openPreview(idx) {
   if (modalFooter) modalFooter.style.display = 'flex';
   modalFileName.textContent = item.name;
   modalMeta.textContent = `${item.type} • ${item.cat} • ${item.size} MB • ${item.source}`;
-  const enc = encodeURIComponent(item.path);
+  const mediaUrl = await resolveMediaUrl(item.path);
 
   if (item.type === 'VIDEO') {
-    modalMedia.innerHTML = `<video controls autoplay loop playsinline src="/api/media?p=${enc}"></video>`;
+    modalMedia.innerHTML = `<video controls autoplay loop playsinline src="${escapeAttr(mediaUrl)}"></video>`;
   } else if (item.type === 'IMAGE') {
-    modalMedia.innerHTML = `<img src="/api/media?p=${enc}" alt="">`;
+    modalMedia.innerHTML = `<img src="${escapeAttr(mediaUrl)}" alt="">`;
   } else {
     modalMedia.innerHTML = `
       <div style="padding:48px 24px;text-align:center;color:#888">
