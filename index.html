@@ -3101,10 +3101,9 @@ if (npTimelineExport) {
       showToast('Select or play an asset first to copy its timeline path', 'ℹ️');
       return;
     }
-    navigator.clipboard.writeText(currentAudioPath).then(() => {
-      showToast('Copied timeline file path to clipboard for Premiere / Resolve!', '📋');
-    }).catch(() => {
-      showToast('Path: ' + currentAudioPath, '📋');
+    copyTextToClipboard(currentAudioPath).then(ok => {
+      if (ok) showToast('Copied timeline file path to clipboard for Premiere / Resolve!', '📋');
+      else showToast('Copy failed — path: ' + currentAudioPath, '⚠️');
     });
   };
 }
@@ -3411,7 +3410,7 @@ viewport.addEventListener('click', e => {
       } else {
         if (isLocalServerAlive) fetch('/api/open_doc?p=' + encodeURIComponent(docPath));
         else {
-          navigator.clipboard.writeText(docPath);
+          copyTextToClipboard(docPath);
           showToast('Copied guide path: ' + docPath, '📄');
         }
       }
@@ -4301,22 +4300,31 @@ function bindLutSimulatorEvents() {
   }
 
   if (btnReveal) {
-    btnReveal.onclick = () => {
+    btnReveal.onclick = async () => {
       if (!activeLutItem) return;
-      fetch('/api/reveal?p=' + encodeURIComponent(activeLutItem.path))
-        .then(r => r.json())
-        .then(res => {
-          if (res.ok) showToast('Opened LUT folder in Explorer', '📂');
-          else showToast('Could not open folder: ' + res.error, '⚠️');
-        })
-        .catch(err => showToast('Explorer trigger error: ' + err.message, '⚠️'));
+      const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+      const revealUrl = isLocal
+        ? '/api/reveal?p=' + encodeURIComponent(activeLutItem.path)
+        : 'http://localhost:8765/api/reveal?p=' + encodeURIComponent(activeLutItem.path);
+      try {
+        const r = await fetch(revealUrl);
+        const res = await r.json();
+        if (res.ok) showToast('Opened LUT folder in Explorer', '📂');
+        else {
+          const ok = await copyTextToClipboard(activeLutItem.path);
+          showToast(ok ? `📋 LUT path copied: ${activeLutItem.path}` : `⚠️ ${res.error}`, ok ? '✅' : '⚠️');
+        }
+      } catch (err) {
+        const ok = await copyTextToClipboard(activeLutItem.path);
+        showToast(ok ? `📋 LUT path copied (run localhost for Explorer): ${activeLutItem.path}` : `⚠️ Explorer unavailable`, ok ? '✅' : '❌');
+      }
     };
   }
   if (btnCopy) {
-    btnCopy.onclick = () => {
+    btnCopy.onclick = async () => {
       if (activeLutItem) {
-        navigator.clipboard.writeText(activeLutItem.path);
-        showToast('LUT path copied!', '📋');
+        const ok = await copyTextToClipboard(activeLutItem.path);
+        showToast(ok ? `📋 Copied: ${activeLutItem.path}` : `⚠️ Copy failed — ${activeLutItem.path}`, ok ? '✅' : '❌');
       }
     };
   }
@@ -4368,87 +4376,111 @@ function closePreview() {
 modalClose.onclick = closePreview;
 previewModal.onclick = e => { if (e.target === previewModal) closePreview(); };
 
-modalReveal.onclick = () => {
-  if (modalActiveItem) {
-    fetch('/api/reveal?p=' + encodeURIComponent(modalActiveItem.path))
-      .then(r => r.json())
-      .then(res => {
-        if (res.ok) showToast('Opened in Explorer', '📂');
-        else showToast('Could not open folder: ' + res.error, '⚠️');
-      })
-      .catch(e => showToast('Explorer trigger failed: ' + e.message, '⚠️'));
+modalReveal.onclick = async () => {
+  if (!modalActiveItem) return;
+  const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const revealUrl = isLocal
+    ? '/api/reveal?p=' + encodeURIComponent(modalActiveItem.path)
+    : 'http://localhost:8765/api/reveal?p=' + encodeURIComponent(modalActiveItem.path);
+  try {
+    const r = await fetch(revealUrl);
+    const res = await r.json();
+    if (res.ok) showToast('Opened in Explorer', '📂');
+    else {
+      const ok = await copyTextToClipboard(modalActiveItem.path);
+      showToast(ok ? `📋 Path copied: ${modalActiveItem.path}` : `⚠️ ${res.error}`, ok ? '✅' : '⚠️');
+    }
+  } catch (e) {
+    const ok = await copyTextToClipboard(modalActiveItem.path);
+    showToast(ok ? `📋 Path copied (run localhost for Explorer reveal): ${modalActiveItem.path}` : `⚠️ Explorer unavailable — path: ${modalActiveItem.path}`, ok ? '✅' : '❌');
   }
 };
-modalCopy.onclick = () => {
+modalCopy.onclick = async () => {
   if (modalActiveItem) {
-    navigator.clipboard.writeText(modalActiveItem.path);
-    modalCopy.textContent = 'Copied!';
+    const ok = await copyTextToClipboard(modalActiveItem.path);
+    modalCopy.textContent = ok ? 'Copied!' : 'Failed!';
+    if (ok) showToast(`📋 Copied: ${modalActiveItem.path}`, '✅');
+    else showToast(`⚠️ Copy failed — path: ${modalActiveItem.path}`, '❌');
     setTimeout(() => { modalCopy.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Path'; }, 1000);
   }
 };
 
 // ── Reveal & Copy Actions ────────────────────────────
 function copyTextToClipboard(text) {
+  // Returns a Promise<boolean> — true if copy succeeded
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).catch(() => fallbackCopyExecCommand(text));
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => {
+      return fallbackCopyExecCommand(text);
+    });
   } else {
-    fallbackCopyExecCommand(text);
+    return Promise.resolve(fallbackCopyExecCommand(text));
   }
 }
 
 function fallbackCopyExecCommand(text) {
-  const textArea = document.createElement('textarea');
-  textArea.value = text;
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-999999px';
-  textArea.style.top = '-999999px';
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
   try {
-    document.execCommand('copy');
-  } catch (err) {}
-  textArea.remove();
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const ok = document.execCommand('copy');
+    textArea.remove();
+    return ok;
+  } catch (err) {
+    return false;
+  }
 }
 
-function revealExplorer(idx, btn) {
+async function revealExplorer(idx, btn) {
   const item = FILTERED[idx];
   if (!item) return;
 
-  // Try localhost server (works on localhost AND from Vercel via CORS/PNA)
-  fetch('http://localhost:8765/api/reveal?p=' + encodeURIComponent(item.path))
-    .then(r => r.json())
-    .then(res => {
-      if (res.ok) {
-        showToast(`Revealed "${item.name}" in Explorer`, '📂');
-      } else {
-        fallbackCopy(item, 'Could not open folder: ' + res.error);
-      }
-    })
-    .catch(() => {
-      fallbackCopy(item, `Path copied to clipboard! (Start local server for auto-reveal)`);
-    });
+  if (btn) {
+    btn.classList.add('ok');
+    setTimeout(() => btn.classList.remove('ok'), 1200);
+  }
 
+  const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const revealUrl = isLocal
+    ? '/api/reveal?p=' + encodeURIComponent(item.path)
+    : 'http://localhost:8765/api/reveal?p=' + encodeURIComponent(item.path);
+
+  try {
+    const r = await fetch(revealUrl);
+    const res = await r.json();
+    if (res.ok) {
+      showToast(`Revealed "${item.name}" in Explorer`, '📂');
+    } else {
+      await fallbackCopy(item);
+    }
+  } catch (e) {
+    await fallbackCopy(item);
+  }
+}
+
+async function copyPath(idx, btn) {
+  const item = FILTERED[idx];
+  if (!item) return;
+  const ok = await copyTextToClipboard(item.path);
+  if (ok) {
+    showToast(`📋 Copied: ${item.path}`, '✅');
+  } else {
+    showToast(`⚠️ Copy failed — path: ${item.path}`, '❌');
+  }
   if (btn) {
     btn.classList.add('ok');
     setTimeout(() => btn.classList.remove('ok'), 1200);
   }
 }
 
-function copyPath(idx, btn) {
-  const item = FILTERED[idx];
-  if (!item) return;
-  copyTextToClipboard(item.path);
-  showToast(`Copied path: ${item.name}`, '📋');
-  if (btn) {
-    btn.classList.add('ok');
-    setTimeout(() => btn.classList.remove('ok'), 1200);
-  }
-}
-
-function fallbackCopy(item, msg) {
-  copyTextToClipboard(item.path);
-  showToast(msg, '📋');
+async function fallbackCopy(item, msg) {
+  const ok = await copyTextToClipboard(item.path);
+  showToast(ok ? `📋 ${item.path}` : `⚠️ Copy failed — ${item.path}`, ok ? '✅' : '❌');
 }
 
 // ── Helpers ──────────────────────────────────────────
