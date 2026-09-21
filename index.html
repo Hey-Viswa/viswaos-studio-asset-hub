@@ -1178,15 +1178,7 @@ body {
       <div class="nav-items" id="creatorsNav"></div>
     </div>
 
-    <!-- Section 3: Pack Guides & Tracklists -->
-    <div class="nav-group">
-      <div class="nav-group-label">Documentation & Guides</div>
-      <button class="nav-item" id="sidebarDocsBtn" style="background:var(--surface);border:1.5px solid var(--border);box-shadow:var(--btn-shadow);color:var(--fg)">
-        <div class="nav-item-left"><span>📚</span><span class="nav-item-name">236 Pack Guides</span></div>
-        <span class="nav-item-count" style="color:var(--accent-red);font-weight:700">OPEN</span>
-      </button>
     </div>
-  </div>
 </aside>
 
 <!-- Main Stage -->
@@ -1195,7 +1187,7 @@ body {
   <header class="top-toolbar">
     <div class="search-wrapper">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      <input class="search-input" id="searchBox" type="text" placeholder="Search catalog: keywords, audio keys (e.g. A#_Bb, Cm), stems, creator... (/ to focus)" autofocus>
+      <input class="search-input" id="searchBox" type="text" placeholder="Search 24,700+ assets (e.g. Documentary, Hans Zimmer, 120 BPM, C Minor, Risers...) (/ to focus)" autofocus>
     </div>
 
     <!-- Quick Only Full Mix Filter Button -->
@@ -1236,10 +1228,7 @@ body {
       <span id="rescanLabel">Sync</span>
     </button>
 
-    <!-- Pack Guides & Docs Hub Button -->
-    <button class="btn-top-action" id="btnOpenDocs" title="Open 236 Pack Guides, Manuals & Metadata Sheets">
-      <span>📚</span> Guides (<span class="doc-chip-badge" id="badgeDocCount">236</span>)
-    </button>
+    
 
     <!-- View Mode Switcher -->
     <div class="view-toggle">
@@ -1333,30 +1322,7 @@ body {
   </div>
 </div>
 
-<!-- Documentation Hub Modal -->
-<div class="modal-overlay" id="docsModal">
-  <div class="modal-box" style="max-width:960px;height:85vh">
-    <div class="modal-bar">
-      <div style="font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px">
-        <span>📚</span> Pack Guides, Manuals & Tracklists (<span id="docsModalCount">236</span>)
-      </div>
-      <button class="btn-action" id="docsModalClose">✕</button>
-    </div>
-    <div style="padding:12px 20px;border-bottom:1.5px solid var(--border);background:var(--surface-hover);display:flex;gap:10px">
-      <input type="text" id="docsSearchInput" class="search-input" placeholder="Search guides: pack name, format (PDF/CSV), keyword..." style="height:34px;flex:1">
-      <select id="docsFilterSection" style="background:var(--input-bg);border:1.5px solid var(--border);border-radius:var(--radius);color:var(--fg);padding:0 10px;font-size:12px;outline:none;cursor:pointer">
-        <option value="">All Sections</option>
-        <option value="Sound Design & SFX">Sound Design & SFX</option>
-        <option value="After Effects">After Effects Plugins</option>
-        <option value="Color Grading">Color Grading & LUTs</option>
-        <option value="Music & Stems">Music & Stems</option>
-      </select>
-    </div>
-    <div id="docsListContainer" style="flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:6px">
-      <!-- Dynamically populated doc rows -->
-    </div>
-  </div>
-</div>
+
 
 <!-- Audio Now Playing Bar with Full Interactive Seekbar -->
 <div class="now-playing" id="npBar">
@@ -1402,7 +1368,6 @@ const STORAGE_KEY = 'viswaos_studio_hub_state_v3';
 
 let RAW_DATA = [];
 let FILTERED = [];
-let ALL_DOCS = [];
 
 let curSection = '';
 let curCreator = '';
@@ -1509,13 +1474,6 @@ const modalClose = document.getElementById('modalClose');
 const modalReveal = document.getElementById('modalReveal');
 const modalCopy = document.getElementById('modalCopy');
 
-const btnOpenDocs = document.getElementById('btnOpenDocs');
-const sidebarDocsBtn = document.getElementById('sidebarDocsBtn');
-const docsModal = document.getElementById('docsModal');
-const docsModalClose = document.getElementById('docsModalClose');
-const docsSearchInput = document.getElementById('docsSearchInput');
-const docsFilterSection = document.getElementById('docsFilterSection');
-const docsListContainer = document.getElementById('docsListContainer');
 
 // ── State Persistence (localStorage) ─────────────────
 
@@ -1721,12 +1679,16 @@ async function resolvePathToBlobUrl(dirHandle, fullPath) {
 async function resolveMediaUrl(fullPath) {
   if (!fullPath) return '';
 
-  // 1. If running on localhost with server
-  if (isLocalServerAlive && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-    return '/api/media?p=' + encodeURIComponent(fullPath);
+  // 1. If local server is running (works on localhost AND cross-origin from Vercel!)
+  if (isLocalServerAlive) {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return '/api/media?p=' + encodeURIComponent(fullPath);
+    } else {
+      return 'http://localhost:8765/api/media?p=' + encodeURIComponent(fullPath);
+    }
   }
 
-  // 2. Direct folder read via File System API
+  // 2. Direct folder read via File System Access API
   if (studioDirHandle) {
     if (blobUrlCache.has(fullPath)) return blobUrlCache.get(fullPath);
     try {
@@ -1740,8 +1702,8 @@ async function resolveMediaUrl(fullPath) {
     }
   }
 
-  // 3. Fallback to API relative URL
-  return '/api/media?p=' + encodeURIComponent(fullPath);
+  // 3. Fallback
+  return 'http://localhost:8765/api/media?p=' + encodeURIComponent(fullPath);
 }
 
 function saveState() {
@@ -1933,9 +1895,12 @@ if (btnTheme) {
 applyTheme(currentTheme);
 
 
-  // Test if local server is alive
+  // Test if local server is alive (relative check + cross-origin localhost for Vercel)
   try {
-    const vRes = await fetch('/api/version').catch(() => null);
+    let vRes = await fetch('/api/version').catch(() => null);
+    if (!vRes || !vRes.ok) {
+      vRes = await fetch('http://localhost:8765/api/version').catch(() => null);
+    }
     isLocalServerAlive = !!(vRes && vRes.ok);
   } catch(e) {
     isLocalServerAlive = false;
@@ -2012,17 +1977,8 @@ applyTheme(currentTheme);
     }
 
     RAW_DATA = await resIndex.json();
-    if (resDocs && resDocs.ok) {
-      try { ALL_DOCS = await resDocs.json(); } catch(e) { ALL_DOCS = []; }
-    }
-
+    normalizeRawData();
     document.getElementById('totalAssetBadge').textContent = RAW_DATA.length.toLocaleString();
-    if (ALL_DOCS && ALL_DOCS.length) {
-      const b1 = document.getElementById('badgeDocCount');
-      const b2 = document.getElementById('docsModalCount');
-      if (b1) b1.textContent = ALL_DOCS.length;
-      if (b2) b2.textContent = ALL_DOCS.length;
-    }
 
     updateSectionCounts();
     populateCreatorsSidebar();
@@ -2048,41 +2004,121 @@ setInterval(async () => {
   } catch(e) {}
 }, 25000);
 
-// Rescan Button Action
+// Rescan Button Action (Non-blocking, zero-hang)
 btnRescan.addEventListener('click', async () => {
   btnRescan.classList.add('syncing');
   rescanLabel.textContent = 'Syncing...';
-  showToast('Scanning E:\\Videos for newly added files...', '🔄');
+  showToast('Synchronizing vault catalog with disk...', '🔄');
+
+  const safetyTimer = setTimeout(() => {
+    btnRescan.classList.remove('syncing');
+    rescanLabel.textContent = 'Sync';
+  }, 10000);
 
   try {
-    const r = await fetch('/api/rescan');
-    const data = await r.json();
-    if (data.status === 'ok') {
-      const rIdx = await fetch('/api/index');
-      RAW_DATA = await rIdx.json();
-      const rDocs = await fetch('/api/docs');
-      if (rDocs.ok) ALL_DOCS = await rDocs.json();
+    const r = await fetch('/api/rescan').catch(() => null);
+    if (!r || !r.ok) {
+      // On Vercel or when local endpoint unavailable, refresh client data cache
+      const cacheBuster = '?v=' + Date.now();
+      const rIdx = await fetch('./vault_data.json' + cacheBuster).catch(() => null);
+      if (rIdx && rIdx.ok) {
+        RAW_DATA = await rIdx.json();
+        normalizeRawData();
+        document.getElementById('totalAssetBadge').textContent = RAW_DATA.length.toLocaleString();
+        updateSectionCounts();
+        populateCreatorsSidebar();
+        renderFilterBoard();
+        applyFilters();
+        showToast(`Catalog refreshed! ${RAW_DATA.length.toLocaleString()} assets live.`, '✨');
+      } else {
+        showToast('Vault synchronized.', '✨');
+      }
+      clearTimeout(safetyTimer);
+      btnRescan.classList.remove('syncing');
+      rescanLabel.textContent = 'Sync';
+      return;
+    }
 
-      document.getElementById('totalAssetBadge').textContent = RAW_DATA.length.toLocaleString();
-      updateSectionCounts();
-      populateCreatorsSidebar();
-      renderFilterBoard();
-      applyFilters();
-      showToast(`Catalog Synced! ${RAW_DATA.length.toLocaleString()} assets live.`, '✅');
-    } else if (data.status === 'already_indexing') {
-      showToast('Indexer is currently running in background...', '⏳');
+    const data = await r.json();
+    if (data.status === 'indexing_started' || data.status === 'already_indexing') {
+      showToast('Indexing E:\\Videos in background. Updating catalog...', '⏳');
+      let checks = 0;
+      const poll = setInterval(async () => {
+        checks++;
+        try {
+          const vRes = await fetch('/api/version');
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            if (!vData.indexing || checks >= 10) {
+              clearInterval(poll);
+              clearTimeout(safetyTimer);
+              const rIdx = await fetch('/api/index?v=' + Date.now());
+              if (rIdx.ok) {
+                RAW_DATA = await rIdx.json();
+                normalizeRawData();
+                document.getElementById('totalAssetBadge').textContent = RAW_DATA.length.toLocaleString();
+                updateSectionCounts();
+                populateCreatorsSidebar();
+                renderFilterBoard();
+                applyFilters();
+                showToast(`Sync complete! ${RAW_DATA.length.toLocaleString()} assets live.`, '✨');
+              }
+              btnRescan.classList.remove('syncing');
+              rescanLabel.textContent = 'Sync';
+            }
+          }
+        } catch(e) {
+          clearInterval(poll);
+          clearTimeout(safetyTimer);
+          btnRescan.classList.remove('syncing');
+          rescanLabel.textContent = 'Sync';
+        }
+      }, 2000);
+      return;
     } else {
-      showToast('Sync completed.', '✅');
+      const rIdx = await fetch('/api/index?v=' + Date.now());
+      if (rIdx.ok) {
+        RAW_DATA = await rIdx.json();
+        normalizeRawData();
+        document.getElementById('totalAssetBadge').textContent = RAW_DATA.length.toLocaleString();
+        updateSectionCounts();
+        populateCreatorsSidebar();
+        renderFilterBoard();
+        applyFilters();
+      }
+      clearTimeout(safetyTimer);
+      btnRescan.classList.remove('syncing');
+      rescanLabel.textContent = 'Sync';
+      showToast(`Catalog Synced! ${RAW_DATA.length.toLocaleString()} assets live.`, '✨');
     }
   } catch(e) {
-    showToast('Failed to connect to indexer.', '❌');
+    showToast('Failed to connect to indexer.', '⚠️');
   } finally {
+    clearTimeout(safetyTimer);
     btnRescan.classList.remove('syncing');
     rescanLabel.textContent = 'Sync';
   }
 });
 
 // ── Section Counts & Navigation ──────────────────────
+function normalizeRawData() {
+  if (!Array.isArray(RAW_DATA)) return;
+  RAW_DATA.forEach(x => {
+    let s = x.section || 'Music & Melodic Stems';
+    if (s === 'Music & Stems' || s === 'Music & Melodic Stems') s = 'Music & Melodic Stems';
+    else if (s === 'Sound Design & SFX' || s === 'Sound Design') s = 'Sound Design & SFX';
+    else if (s === 'Overlays & Footage' || s === 'Overlays & Transitions' || s === 'Footage & Archives') s = 'Overlays & Footage';
+    else if (s === 'Color Grading & LUTs' || s === 'Color Grading') s = 'Color Grading & LUTs';
+    else if (s === 'Textures & Elements' || s === 'Motion & Graphics') s = 'Textures & Elements';
+    else s = 'Music & Melodic Stems';
+    x.section = s;
+
+    if (x.path && (x.path.includes('01 - Documentary & Cinematic') || x.path.includes('10 - Cinema & Documentary'))) {
+      x.source = 'Documentary & Cinematic (2000-2026)';
+    }
+  });
+}
+
 function updateSectionCounts() {
   const counts = { music: 0, sfx: 0, video: 0, lut: 0, graphics: 0 };
   RAW_DATA.forEach(x => {
@@ -2145,21 +2181,31 @@ sectionNav.addEventListener('click', e => {
 function populateCreatorsSidebar() {
   const relevant = curSection ? RAW_DATA.filter(x => x.section === curSection) : RAW_DATA;
   const counts = {};
-  relevant.forEach(x => { counts[x.source] = (counts[x.source] || 0) + 1; });
+  relevant.forEach(x => { if (x.source) counts[x.source] = (counts[x.source] || 0) + 1; });
 
-  const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  let sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+  // Pin Documentary & Cinematic (2000-2026) to the very top in Music
+  if (curSection === 'Music & Melodic Stems') {
+    const docKey = 'Documentary & Cinematic (2000-2026)';
+    if (counts[docKey]) {
+      sorted = [docKey, ...sorted.filter(k => k !== docKey)];
+    }
+  }
+
   creatorsNav.innerHTML = '';
 
   sorted.forEach(src => {
+    const isDoc = src.includes('Documentary & Cinematic');
     const btn = document.createElement('button');
-    btn.className = 'nav-item' + (curCreator === src ? ' active' : '');
+    btn.className = 'nav-item' + (curCreator === src ? ' active' : '') + (isDoc ? ' doc-highlight' : '');
     btn.dataset.creator = src;
     btn.innerHTML = `
       <div class="nav-item-left">
-        <span style="font-size:11px">📁</span>
+        <span style="font-size:11px">${isDoc ? '⭐' : '📁'}</span>
         <span class="nav-item-name" title="${escapeAttr(src)}">${escapeHtml(src)}</span>
       </div>
-      <span class="nav-item-count">${counts[src].toLocaleString()}</span>
+      <span class="nav-item-count" style="${isDoc ? 'color:var(--accent);font-weight:700' : ''}">${counts[src].toLocaleString()}</span>
     `;
     creatorsNav.appendChild(btn);
   });
@@ -2324,7 +2370,15 @@ function applyFilters() {
     }
 
     // Music Studio Filters
-    if (curSection === 'Music & Stems') {
+    if (curSection === 'Music & Melodic Stems' || curSection === 'Music & Stems') {
+      if (curMusicVibe) {
+        if (curMusicVibe === 'Documentary') {
+          const isDoc = (item.source && item.source.includes('Documentary')) || (item.vibe && item.vibe.toLowerCase().includes('documentary')) || (item.tags && item.tags.includes('documentary'));
+          if (!isDoc) return false;
+        } else {
+          if (!item.vibe || item.vibe.toLowerCase() !== curMusicVibe.toLowerCase()) return false;
+        }
+      }
       if (curMusicStem) {
         if (!item.stem || item.stem.toLowerCase() !== curMusicStem.toLowerCase()) return false;
       }
@@ -2351,9 +2405,7 @@ function applyFilters() {
       if (curMusicInst) {
         if (!item.insts || !item.insts.includes(curMusicInst)) return false;
       }
-      if (curMusicVibe) {
-        if (!item.vibe || item.vibe.toLowerCase() !== curMusicVibe.toLowerCase()) return false;
-      }
+      
     }
 
     // SFX Category & Micro-Foley Filters
@@ -3219,100 +3271,6 @@ viewport.addEventListener('click', e => {
   if (playBtn) {
     toggleLockAudio(parseInt(playBtn.dataset.playAudio));
     return;
-  }
-});
-
-// ── Documentation Hub Modal Logic ────────────────────
-if (btnOpenDocs) btnOpenDocs.onclick = openDocsModal;
-if (sidebarDocsBtn) sidebarDocsBtn.onclick = openDocsModal;
-if (docsModalClose) docsModalClose.onclick = () => docsModal.classList.remove('open');
-if (docsModal) docsModal.onclick = e => { if (e.target === docsModal) docsModal.classList.remove('open'); };
-
-async function openDocsModal() {
-  docsModal.classList.add('open');
-  if (!ALL_DOCS || !ALL_DOCS.length) {
-    docsListContainer.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner"></div><span style="color:var(--fg-dim);font-size:12px;margin-top:8px;display:block">Loading 236 guides...</span></div>';
-    try {
-      const res = await fetch('/api/docs');
-      if (res.ok) {
-        ALL_DOCS = await res.json();
-        const b1 = document.getElementById('badgeDocCount');
-        const b2 = document.getElementById('docsModalCount');
-        if (b1) b1.textContent = ALL_DOCS.length;
-        if (b2) b2.textContent = ALL_DOCS.length;
-      }
-    } catch(e) {}
-  }
-  renderDocsList();
-  setTimeout(() => docsSearchInput && docsSearchInput.focus(), 60);
-}
-
-if (docsSearchInput) docsSearchInput.oninput = renderDocsList;
-if (docsFilterSection) docsFilterSection.onchange = renderDocsList;
-
-function renderDocsList() {
-  if (!docsListContainer) return;
-  const q = (docsSearchInput?.value || '').toLowerCase().trim();
-  const sec = docsFilterSection?.value || '';
-
-  const matched = ALL_DOCS.filter(d => {
-    if (sec && !d.section.toLowerCase().includes(sec.toLowerCase())) return false;
-    if (q) {
-      const hay = (d.title + ' ' + d.collection + ' ' + d.ext + ' ' + d.section).toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-
-  if (!matched.length) {
-    docsListContainer.innerHTML = `<div style="text-align:center;padding:40px;color:var(--fg-dim)">No guides or documentation found matching "${escapeHtml(q)}"</div>`;
-    return;
-  }
-
-  docsListContainer.innerHTML = matched.map((d, i) => `
-    <div class="doc-row" data-doc-idx="${i}">
-      <div class="doc-row-left">
-        <span class="doc-type-badge doc-type-${d.ext}">${d.ext}</span>
-        <div style="display:flex;flex-direction:column;gap:1px;overflow:hidden">
-          <div style="font-weight:600;font-size:12px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeAttr(d.title)}">${escapeHtml(d.title)}</div>
-          <div style="font-size:10px;color:var(--fg-dim);display:flex;gap:8px">
-            <span>${escapeHtml(d.collection)}</span>
-            <span>•</span>
-            <span>${d.size_kb} KB</span>
-          </div>
-        </div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn-modal" data-doc-action="read" data-path="${escapeAttr(d.path)}" data-ext="${d.ext}" style="height:26px;font-size:11px;padding:0 8px">
-          ${d.ext === 'PDF' ? '👁️ Read' : '📂 Open'}
-        </button>
-        <button class="btn-action" data-doc-action="reveal" data-path="${escapeAttr(d.path)}" title="Reveal in Explorer" style="width:26px;height:26px">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        </button>
-      </div>
-    </div>
-  `).join('');
-}
-
-// Docs Event Delegation (100% immune to Windows backslash syntax errors!)
-docsListContainer.addEventListener('click', e => {
-  const btn = e.target.closest('[data-doc-action]');
-  if (!btn) return;
-  const action = btn.dataset.docAction;
-  const path = btn.dataset.path;
-  const ext = btn.dataset.ext;
-  if (!path) return;
-
-  if (action === 'read') {
-    if (ext === 'PDF' || ext === 'HTML' || ext === 'TXT') {
-      window.open('/api/media?p=' + encodeURIComponent(path), '_blank');
-    } else {
-      fetch('/api/open_doc?p=' + encodeURIComponent(path));
-    }
-  } else if (action === 'reveal') {
-    fetch('/api/reveal?p=' + encodeURIComponent(path));
-    btn.classList.add('ok');
-    setTimeout(() => btn.classList.remove('ok'), 1200);
   }
 });
 
@@ -4357,13 +4315,12 @@ document.addEventListener('keydown', e => {
     }
   }
 
-  if (e.key === '/' && document.activeElement !== searchBox && !previewModal.classList.contains('open') && !docsModal.classList.contains('open')) {
+  if (e.key === '/' && document.activeElement !== searchBox && !previewModal.classList.contains('open')) {
     e.preventDefault(); searchBox.focus(); return;
   }
   if (e.key === 'Escape') {
     if (previewModal.classList.contains('open')) { closePreview(); return; }
-    if (docsModal.classList.contains('open')) { docsModal.classList.remove('open'); return; }
-    if (document.activeElement === searchBox) { searchBox.blur(); searchBox.value = ''; searchQuery = ''; applyFilters(); saveState(); }
+        if (document.activeElement === searchBox) { searchBox.blur(); searchBox.value = ''; searchQuery = ''; applyFilters(); saveState(); }
     return;
   }
   if (document.activeElement !== searchBox && document.activeElement !== docsSearchInput) {
