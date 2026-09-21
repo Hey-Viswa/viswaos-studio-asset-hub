@@ -5,13 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ViswaOS Studio Asset Hub</title>
 <script>
+  // Enforce Master Cream Editorial Light Theme as the primary default
   try {
-    let t = localStorage.getItem('viswaos_theme');
-    if (!t) {
-      const raw = localStorage.getItem('viswaos_studio_hub_state_v3') || localStorage.getItem('viswaos_studio_hub_state_v2');
-      if (raw) t = JSON.parse(raw).theme;
-    }
-    // Default to light theme per Viswa's decree, ensuring it NEVER goes dark automatically
+    const t = localStorage.getItem('viswaos_theme');
     if (t === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
     } else {
@@ -25,8 +21,55 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
 <style>
-:root, [data-theme="dark"] {
-  /* ── Dark Theme (Default) ── */
+:root, [data-theme="light"] {
+  /* ── Master Neo-Brutalist Light Theme (Cream Canvas & Ink Charcoal) ── */
+  --bg: #FBF9F5;
+  --sidebar-bg: #F4EFEA;
+  --header-bg: #FBF9F5;
+  --card-bg: #FFFFFF;
+  --card-hover: #FAF6EE;
+  --surface: #FFFFFF;
+  --surface-hover: #F4EFEA;
+  --border: #1C1917;
+  --border-subtle: #E2DDD5;
+  --border-strong: #1C1917;
+  --ring: #1C1917;
+  --fg: #1C1917;
+  --fg-muted: #57534E;
+  --fg-dim: #78716C;
+  --accent: #D97706;
+  --accent-red: #E86034;
+  --primary-btn-bg: #1C1917;
+  --primary-btn-fg: #FFFFFF;
+  --player-bg: #FFFFFF;
+  --modal-bg: #FFFFFF;
+  --modal-bar-bg: #F4EFEA;
+  --modal-content-bg: #FBF9F5;
+  --toast-bg: #FFFFFF;
+  --toast-border: #1C1917;
+  --wf-box-bg: #EFE9DF;
+  --wf-box-border: #D6CFC3;
+  --wf-bar-unplayed: #B8B0A2;
+  --wf-bar-played: #1C1917;
+  --sort-bg: #FFFFFF;
+  --input-bg: #FFFFFF;
+  --chip-bg: #FFFFFF;
+  --chip-hover-bg: #F4EFEA;
+  --chip-active-bg: #1C1917;
+  --chip-active-fg: #FFFFFF;
+  --nav-active-bg: #1C1917;
+  --nav-active-fg: #FFFFFF;
+  --thumb-bg: #F4EFEA;
+  --card-shadow: 2px 2px 0px #1C1917;
+  --btn-shadow: 1px 1px 0px #1C1917;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 6px;
+}
+
+[data-theme="dark"] {
+  /* ── Dark Theme (Opt-in) ── */
   --bg: #09090b;
   --sidebar-bg: #0c0c0e;
   --header-bg: #0b0b0e;
@@ -66,53 +109,6 @@
   --thumb-bg: #0c0c10;
   --card-shadow: 2px 2px 0px rgba(0,0,0,0.8);
   --btn-shadow: 1px 1px 0px rgba(0,0,0,0.6);
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-serif: 'Playfair Display', Georgia, serif;
-  --mono: 'JetBrains Mono', monospace;
-  --radius: 6px;
-}
-
-[data-theme="light"] {
-  /* ── Master Neo-Brutalist Light Theme (60-30-10 Cream & Ink Charcoal) ── */
-  --bg: #FBF9F5;
-  --sidebar-bg: #F2EDE4;
-  --header-bg: #FBF9F5;
-  --card-bg: #FFFFFF;
-  --card-hover: #FAF6EE;
-  --surface: #FFFFFF;
-  --surface-hover: #F2EDE4;
-  --border: #1B1917;
-  --border-subtle: #D6D0C4;
-  --border-strong: #1B1917;
-  --ring: #1B1917;
-  --fg: #1B1917;
-  --fg-muted: #44403C;
-  --fg-dim: #78716C;
-  --accent: #D97706;
-  --accent-red: #E86034;
-  --primary-btn-bg: #1B1917;
-  --primary-btn-fg: #FFFFFF;
-  --player-bg: #FFFFFF;
-  --modal-bg: #FFFFFF;
-  --modal-bar-bg: #F2EDE4;
-  --modal-content-bg: #FBF9F5;
-  --toast-bg: #FFFFFF;
-  --toast-border: #1B1917;
-  --wf-box-bg: #F2EDE4;
-  --wf-box-border: #1B1917;
-  --wf-bar-unplayed: #B8B2A6;
-  --wf-bar-played: #1B1917;
-  --sort-bg: #FFFFFF;
-  --input-bg: #FFFFFF;
-  --chip-bg: #FFFFFF;
-  --chip-hover-bg: #F2EDE4;
-  --chip-active-bg: #1B1917;
-  --chip-active-fg: #FFFFFF;
-  --nav-active-bg: #1B1917;
-  --nav-active-fg: #FFFFFF;
-  --thumb-bg: #F2EDE4;
-  --card-shadow: 2px 2px 0px #1B1917;
-  --btn-shadow: 1px 1px 0px #1B1917;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1088,16 +1084,11 @@ body {
   box-shadow: var(--btn-shadow);
 }
 
-/* ── Responsive 4K & High-DPI Scaling Engine ────────── */
-@media (min-width: 1921px) {
-  .sidebar { width: 340px; min-width: 340px; }
-  .asset-viewport { padding: 18px 24px 90px; }
-  .wf-box { width: 200px; }
-  .list-row { height: 52px; }
+/* ── Proportional Fluid Scaling ── */
+@media (max-width: 1024px) {
+  .sidebar { width: 240px; min-width: 240px; }
+  .view-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
-
-@media (min-width: 2560px) {
-  body { font-size: 14px; }
   .sidebar { width: 380px; min-width: 380px; }
   .sidebar-header { padding: 22px 24px 16px; }
   .brand-title { font-size: 17px; }
@@ -1150,23 +1141,38 @@ body {
       <div class="nav-group-label">Master Hubs</div>
       <div class="nav-items" id="sectionNav">
         <button class="nav-item active" data-section="Music & Melodic Stems">
-          <div class="nav-item-left"><span>🎵</span><span class="nav-item-name">Music & Melodic Stems</span></div>
+          <div class="nav-item-left">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <span class="nav-item-name">Music & Melodic Stems</span>
+          </div>
           <span class="nav-item-count" id="countMusic">...</span>
         </button>
         <button class="nav-item" data-section="Sound Design & SFX">
-          <div class="nav-item-left"><span>🔊</span><span class="nav-item-name">Sound Design & SFX</span></div>
+          <div class="nav-item-left">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span class="nav-item-name">Sound Design & SFX</span>
+          </div>
           <span class="nav-item-count" id="countSFX">...</span>
         </button>
         <button class="nav-item" data-section="Overlays & Footage">
-          <div class="nav-item-left"><span>🎬</span><span class="nav-item-name">Overlays & Footage</span></div>
+          <div class="nav-item-left">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
+            <span class="nav-item-name">Overlays & Footage</span>
+          </div>
           <span class="nav-item-count" id="countVideo">...</span>
         </button>
         <button class="nav-item" data-section="Color Grading & LUTs">
-          <div class="nav-item-left"><span>🎨</span><span class="nav-item-name">Color Grading & LUTs</span></div>
+          <div class="nav-item-left">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            <span class="nav-item-name">Color Grading & LUTs</span>
+          </div>
           <span class="nav-item-count" id="countLUT">...</span>
         </button>
         <button class="nav-item" data-section="Textures & Elements">
-          <div class="nav-item-left"><span>🖼️</span><span class="nav-item-name">Textures & Elements</span></div>
+          <div class="nav-item-left">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            <span class="nav-item-name">Textures & Elements</span>
+          </div>
           <span class="nav-item-count" id="countGraphics">...</span>
         </button>
       </div>
@@ -1358,6 +1364,16 @@ body {
   <button class="btn-np-ctrl" id="npLoopBtn" title="Toggle Loop Playback">
     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
   </button>
+
+  <!-- Speed Selector -->
+  <button class="btn-np-ctrl" id="npSpeedBtn" title="Cycle Audition Speed (0.75x, 1x, 1.25x, 1.5x, 2x)">
+    <span id="npSpeedLabel" style="font-size:11px;font-weight:700">1.0x</span>
+  </button>
+
+  <!-- 1-Click Timeline Export / Copy -->
+  <button class="btn-np-ctrl" id="npTimelineExport" title="Copy exact path for Premiere Pro / DaVinci Resolve">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+  </button>
 </div>
 
 <audio id="globalAudio" preload="auto"></audio>
@@ -1365,6 +1381,17 @@ body {
 <script>
 // ── State Management ──────────────────────────────────
 const STORAGE_KEY = 'viswaos_studio_hub_state_v3';
+// ── Section Normalizer ─────────────────────────────
+function normalizeSectionName(sec) {
+  if (!sec) return 'Music & Melodic Stems';
+  if (sec === 'Music & Stems' || sec === 'Music & Melodic Stems') return 'Music & Melodic Stems';
+  if (sec === 'Sound Design & SFX' || sec === 'Sound Design') return 'Sound Design & SFX';
+  if (sec === 'Overlays & Footage' || sec === 'Overlays & Transitions' || sec === 'Footage & Archives') return 'Overlays & Footage';
+  if (sec === 'Color Grading & LUTs' || sec === 'Color Grading') return 'Color Grading & LUTs';
+  if (sec === 'Textures & Elements' || sec === 'Motion & Graphics') return 'Textures & Elements';
+  return sec;
+}
+
 
 let RAW_DATA = [];
 let FILTERED = [];
@@ -2013,7 +2040,7 @@ btnRescan.addEventListener('click', async () => {
   const safetyTimer = setTimeout(() => {
     btnRescan.classList.remove('syncing');
     rescanLabel.textContent = 'Sync';
-  }, 10000);
+  }, 3500);
 
   try {
     const r = await fetch('/api/rescan').catch(() => null);
@@ -2149,7 +2176,7 @@ function updateActiveSectionBtn() {
 sectionNav.addEventListener('click', e => {
   const btn = e.target.closest('.nav-item');
   if (!btn) return;
-  curSection = btn.dataset.section;
+  curSection = normalizeSectionName(btn.dataset.section);
   curCreator = '';
   curTag = '';
   curMusicStem = '';
@@ -2349,8 +2376,10 @@ searchBox.addEventListener('input', () => {
 function applyFilters() {
   const terms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
 
+  const normCurSection = normalizeSectionName(curSection);
+
   FILTERED = RAW_DATA.filter(item => {
-    if (curSection && item.section !== curSection) return false;
+    if (normCurSection && normalizeSectionName(item.section) !== normCurSection) return false;
     if (curCreator && item.source !== curCreator) return false;
 
     // Hard Runtime Section Purity Guard (5 Dedicated Hubs Only)
@@ -2420,9 +2449,20 @@ function applyFilters() {
       if (!tagHay.includes(curTag.toLowerCase())) return false;
     }
 
-    // Query Search
+    // Query Search (Comprehensive Search across Name, Path, Tags, Artist, Category, Section & BPM)
     if (terms.length) {
-      const hay = (item.name + ' ' + item.tags + ' ' + item.source + ' ' + item.cat + ' ' + (item.stem||'') + ' ' + (item.key||'') + ' ' + (item.subcat||'') + ' ' + (item.bpm ? item.bpm+'bpm' : '')).toLowerCase();
+      const hay = (
+        (item.name || '') + ' ' +
+        (item.tags || '') + ' ' +
+        (item.source || '') + ' ' +
+        (item.cat || '') + ' ' +
+        (item.section || '') + ' ' +
+        (item.path || '') + ' ' +
+        (item.stem || '') + ' ' +
+        (item.key || '') + ' ' +
+        (item.subcat || '') + ' ' +
+        (item.bpm ? item.bpm + 'bpm ' + item.bpm : '')
+      ).toLowerCase();
       if (!terms.every(t => hay.includes(t))) return false;
     }
     return true;
@@ -2893,7 +2933,7 @@ async function playAudio(item, idx, lock = true) {
   if (!isLocalServerAlive && !studioDirHandle && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
     if (lock) {
       showToast('📁 Click "Studio Drive" in top bar to link E:\\Videos for instant 0ms playback on Vercel!', '💡');
-      openFolderModal();
+      showFolderConnectModal();
     }
     return;
   }
@@ -2992,7 +3032,39 @@ async function pinpointPlay(item, idx, ratio) {
   startPlaybackLoop();
 }
 
-async function stopAudio() {
+async 
+// ── Playback Speed Engine & Timeline Path Export ─────
+const npSpeedBtn = document.getElementById('npSpeedBtn');
+const npSpeedLabel = document.getElementById('npSpeedLabel');
+const SPEEDS = [0.75, 1.0, 1.25, 1.5, 2.0];
+let currentSpeedIdx = 1;
+
+if (npSpeedBtn) {
+  npSpeedBtn.onclick = () => {
+    currentSpeedIdx = (currentSpeedIdx + 1) % SPEEDS.length;
+    const spd = SPEEDS[currentSpeedIdx];
+    audio.playbackRate = spd;
+    if (npSpeedLabel) npSpeedLabel.textContent = spd + 'x';
+    showToast(`Audition Speed: ${spd}x`, '⚡');
+  };
+}
+
+const npTimelineExport = document.getElementById('npTimelineExport');
+if (npTimelineExport) {
+  npTimelineExport.onclick = () => {
+    if (!currentAudioPath) {
+      showToast('Select or play an asset first to copy its timeline path', 'ℹ️');
+      return;
+    }
+    navigator.clipboard.writeText(currentAudioPath).then(() => {
+      showToast('Copied timeline file path to clipboard for Premiere / Resolve!', '📋');
+    }).catch(() => {
+      showToast('Path: ' + currentAudioPath, '📋');
+    });
+  };
+}
+
+function stopAudio() {
   currentPlayToken++;
   if (pendingPlayPromise) {
     try { await pendingPlayPromise; } catch(e) {}
