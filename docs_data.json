@@ -528,8 +528,8 @@
     "size_kb": 1188.2
   },
   {
-    "title": "GifGun \u2013 User Manual.pdf",
-    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\03 - Video Tutorials & Documentation\\Manuals & Guides\\GifGun1.7.23\\GifGun \u2013 User Manual.pdf",
+    "title": "GifGun – User Manual.pdf",
+    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\03 - Video Tutorials & Documentation\\Manuals & Guides\\GifGun1.7.23\\GifGun – User Manual.pdf",
     "ext": "PDF",
     "section": "04 - After Effects Bundles & Plugins",
     "collection": "03 - Video Tutorials & Documentation",
@@ -1608,8 +1608,8 @@
     "size_kb": 0.5
   },
   {
-    "title": "GifGun \u2013 User Manual.pdf",
-    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\06 - Master Aescripts Full Bundle (Part 1)\\AE_Bundle_Part1\\After Effects Scripts & Plugins Bundle\\Aescripts-GifGun1.7.23\\GifGun \u2013 User Manual.pdf",
+    "title": "GifGun – User Manual.pdf",
+    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\06 - Master Aescripts Full Bundle (Part 1)\\AE_Bundle_Part1\\After Effects Scripts & Plugins Bundle\\Aescripts-GifGun1.7.23\\GifGun – User Manual.pdf",
     "ext": "PDF",
     "section": "04 - After Effects Bundles & Plugins",
     "collection": "06 - Master Aescripts Full Bundle (Part 1)",
@@ -1886,5 +1886,69 @@
     "section": "04 - After Effects Bundles & Plugins",
     "collection": "06 - Master Aescripts Full Bundle (Part 1)",
     "size_kb": 0.2
+  },
+  {
+    "title": "FILM CRUX License Agreement.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\FilmCrux-OCTIVE Vol. 1\\OCTIVE Vol. 1\\FILM CRUX License Agreement.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "FilmCrux: OCTIVE Vol. 1",
+    "size_kb": 30.8
+  },
+  {
+    "title": "FILM CRUX License Agreement.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\FilmCrux-OCTIVE Vol. 2\\OCTIVE Vol. 2\\FILM CRUX License Agreement.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "FilmCrux: OCTIVE Vol. 2",
+    "size_kb": 30.8
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\CUSTOM TRANSITIONS\\Premiere Pro Presets\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 94.9
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\PROCREATE BRUSHES\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 99.2
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\SIGNATURE COLOR-GRADE\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 95.9
+  },
+  {
+    "title": "1 Data Set Example.csv",
+    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\06 - Master Aescripts Full Bundle (Part 1)\\AE_Bundle_Part1\\After Effects Scripts & Plugins Bundle\\Aescripts-Infographics toolkit v1.04\\Help\\1 Data Set Example.csv",
+    "ext": "CSV",
+    "section": "Textures & Elements",
+    "collection": "Master Aescripts Full Bundle (Part 1)",
+    "size_kb": 0.1
+  },
+  {
+    "title": "2 Data Set Example.csv",
+    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\06 - Master Aescripts Full Bundle (Part 1)\\AE_Bundle_Part1\\After Effects Scripts & Plugins Bundle\\Aescripts-Infographics toolkit v1.04\\Help\\2 Data Set Example.csv",
+    "ext": "CSV",
+    "section": "Textures & Elements",
+    "collection": "Master Aescripts Full Bundle (Part 1)",
+    "size_kb": 0.1
+  },
+  {
+    "title": "3 Data Set Example.csv",
+    "path": "E:\\Videos\\04 - After Effects Bundles & Plugins\\06 - Master Aescripts Full Bundle (Part 1)\\AE_Bundle_Part1\\After Effects Scripts & Plugins Bundle\\Aescripts-Infographics toolkit v1.04\\Help\\3 Data Set Example.csv",
+    "ext": "CSV",
+    "section": "Textures & Elements",
+    "collection": "Master Aescripts Full Bundle (Part 1)",
+    "size_kb": 0.1
   }
 ]
