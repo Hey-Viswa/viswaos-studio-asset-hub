@@ -1089,6 +1089,8 @@ body {
   .sidebar { width: 240px; min-width: 240px; }
   .view-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 }
+
+@media (min-width: 1921px) {
   .sidebar { width: 380px; min-width: 380px; }
   .sidebar-header { padding: 22px 24px 16px; }
   .brand-title { font-size: 17px; }
@@ -1905,11 +1907,14 @@ function applyTheme(theme) {
     viewport.querySelectorAll('.wf-box canvas').forEach(c => c.remove());
     setTimeout(loadWaveforms, 20);
   }
-  if (currentPlayingAudioIdx !== null && activeAudioRow) {
-    const c = activeAudioRow.querySelector('.wf-box canvas');
-    if (c && audio.duration) {
-      const prog = audio.currentTime / audio.duration;
-      renderWaveBars(c, wfCache[currentAudioPath] || generateProceduralPeaks(currentAudioPath), prog);
+  if (typeof lockedAudioIndex !== 'undefined' && lockedAudioIndex >= 0) {
+    const activeAudioRow = viewport.querySelector(`.list-row[data-idx="${lockedAudioIndex}"]`);
+    if (activeAudioRow) {
+      const c = activeAudioRow.querySelector('.wf-box canvas');
+      if (c && audio.duration) {
+        const prog = audio.currentTime / audio.duration;
+        renderWaveBars(c, wfCache[currentAudioPath] || generateProceduralPeaks(currentAudioPath), prog);
+      }
     }
   }
 }
@@ -3067,7 +3072,6 @@ async function pinpointPlay(item, idx, ratio) {
   startPlaybackLoop();
 }
 
-async 
 // ── Playback Speed Engine & Timeline Path Export ─────
 const npSpeedBtn = document.getElementById('npSpeedBtn');
 const npSpeedLabel = document.getElementById('npSpeedLabel');
