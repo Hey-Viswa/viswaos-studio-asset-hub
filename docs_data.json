@@ -1950,5 +1950,45 @@
     "section": "Textures & Elements",
     "collection": "Master Aescripts Full Bundle (Part 1)",
     "size_kb": 0.1
+  },
+  {
+    "title": "SoundMorph_Motion_Graphics_Soundminer_UCS.csv",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\SoundMorph - Motion Graphics\\3. Metadata Documentation\\SoundMorph_Motion_Graphics_Soundminer_UCS.csv",
+    "ext": "CSV",
+    "section": "Sound Design & SFX",
+    "collection": "SoundMorph: Motion Graphics",
+    "size_kb": 221.8
+  },
+  {
+    "title": "SoundMorph_EULA_2023.pdf",
+    "path": "E:\\Videos\\01 - Sound Design & SFX\\SoundMorph - Motion Graphics\\4. Legal - End User License Agreement\\SoundMorph_EULA_2023.pdf",
+    "ext": "PDF",
+    "section": "Sound Design & SFX",
+    "collection": "SoundMorph: Motion Graphics",
+    "size_kb": 107.0
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\02 - Motion & Graphic Design Assets\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\CUSTOM TRANSITIONS\\Premiere Pro Presets\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Textures & Elements",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 94.9
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\02 - Motion & Graphic Design Assets\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\PROCREATE BRUSHES\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Textures & Elements",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 99.2
+  },
+  {
+    "title": "INSTALLATION GUIDE.pdf",
+    "path": "E:\\Videos\\02 - Motion & Graphic Design Assets\\One Click Editing Vault! by @JordansArchivess  Stan\\PRODUCT\\SIGNATURE COLOR-GRADE\\INSTALLATION GUIDE.pdf",
+    "ext": "PDF",
+    "section": "Textures & Elements",
+    "collection": "One Click Editing Vault (@JordansArchives)",
+    "size_kb": 95.9
   }
 ]
